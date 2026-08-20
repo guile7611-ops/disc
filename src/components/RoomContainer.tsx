@@ -16,35 +16,44 @@ interface RoomContainerProps {
 
 export function RoomContainer({ token, wsUrl, onLeave }: RoomContainerProps) {
   return (
-    <LiveKitRoom
-      serverUrl={wsUrl}
-      token={token}
-      connect={true}
-      audio={true} // Habilita o microfone na entrada conforme autorização
-      video={false} // Desativa webcam (somente voz e compartilhamento de tela)
-      onDisconnected={onLeave}
-      onError={(err) => {
-        console.error('Erro na sala LiveKit:', err);
-      }}
-      className="flex flex-col h-screen w-screen bg-slate-950 text-slate-100 overflow-hidden select-none"
-    >
-      {/* Renderer obrigatório para áudio dos participantes remotos */}
-      <RoomAudioRenderer />
+    <div className="fixed inset-0 w-screen h-screen bg-[#1e1f22] overflow-hidden select-none flex flex-col z-50">
+      <LiveKitRoom
+        serverUrl={wsUrl}
+        token={token}
+        connect={true}
+        audio={true} // Habilita áudio na entrada
+        video={false} // Desativa webcam
+        onDisconnected={onLeave}
+        onError={(err) => {
+          console.error('Erro na sala LiveKit:', err);
+        }}
+        style={{
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          backgroundColor: '#1e1f22',
+          overflow: 'hidden',
+        }}
+      >
+        {/* Renderer de áudio remoto obrigatório */}
+        <RoomAudioRenderer />
 
-      {/* Alerta caso o navegador bloqueie autoplay de áudio */}
-      <AudioFallbackNotice />
+        {/* Alerta de Autoplay do Navegador */}
+        <AudioFallbackNotice />
 
-      {/* Cabeçalho da chamada */}
-      <RoomHeader onLeave={onLeave} />
+        {/* Cabeçalho do Canal */}
+        <RoomHeader onLeave={onLeave} />
 
-      {/* Conteúdo Principal (Área de Tela + Painel Lateral de Participantes) */}
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
-        <ScreenShareArea />
-        <ParticipantList />
-      </div>
+        {/* Conteúdo Principal (Área de Telas + Lista de Membros) */}
+        <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative min-h-0">
+          <ScreenShareArea />
+          <ParticipantList />
+        </div>
 
-      {/* Barra de Controles Fixa */}
-      <ControlBar onLeave={onLeave} />
-    </LiveKitRoom>
+        {/* Barra de Controles Fixa no Rodapé */}
+        <ControlBar onLeave={onLeave} />
+      </LiveKitRoom>
+    </div>
   );
 }

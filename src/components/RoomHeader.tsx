@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { useConnectionState } from '@livekit/components-react';
+import { useConnectionState, useRoomContext } from '@livekit/components-react';
 import { ConnectionState } from 'livekit-client';
 import { useCallTimer } from '@/hooks/useCallTimer';
 import { Clock, Volume2, LogOut } from 'lucide-react';
@@ -11,45 +11,61 @@ interface RoomHeaderProps {
 }
 
 export function RoomHeader({ onLeave }: RoomHeaderProps) {
-  const state = useConnectionState();
-  const isConnected = state === ConnectionState.Connected;
+  const connectionState = useConnectionState();
+  const room = useRoomContext();
+
+  const isConnected =
+    connectionState === ConnectionState.Connected ||
+    room?.state === ConnectionState.Connected;
+
+  const isConnecting =
+    connectionState === ConnectionState.Connecting ||
+    room?.state === ConnectionState.Connecting;
+
+  const isReconnecting =
+    connectionState === ConnectionState.Reconnecting ||
+    room?.state === ConnectionState.Reconnecting;
+
   const { formattedTime } = useCallTimer(isConnected);
 
   const renderStateBadge = () => {
-    switch (state) {
-      case ConnectionState.Connected:
-        return (
-          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#23a55a]/10 border border-[#23a55a]/30 text-[#23a55a] text-xs font-bold">
-            <span className="w-2 h-2 rounded-full bg-[#23a55a] animate-pulse" />
-            Voz Conectada
-          </div>
-        );
-      case ConnectionState.Reconnecting:
-        return (
-          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#f0b232]/10 border border-[#f0b232]/30 text-[#f0b232] text-xs font-bold animate-pulse">
-            <span className="w-2 h-2 rounded-full bg-[#f0b232]" />
-            Reconectando...
-          </div>
-        );
-      case ConnectionState.Connecting:
-        return (
-          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#5865F2]/10 border border-[#5865F2]/30 text-[#5865F2] text-xs font-bold">
-            <span className="w-2 h-2 rounded-full bg-[#5865F2] animate-ping" />
-            Conectando RTC...
-          </div>
-        );
-      default:
-        return (
-          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#23a55a]/10 border border-[#23a55a]/30 text-[#23a55a] text-xs font-bold">
-            <span className="w-2 h-2 rounded-full bg-[#23a55a] animate-pulse" />
-            Voz Conectada
-          </div>
-        );
+    if (isConnected) {
+      return (
+        <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#23a55a]/10 border border-[#23a55a]/30 text-[#23a55a] text-xs font-bold">
+          <span className="w-2 h-2 rounded-full bg-[#23a55a] animate-pulse" />
+          Voz Conectada
+        </div>
+      );
     }
+
+    if (isReconnecting) {
+      return (
+        <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#f0b232]/10 border border-[#f0b232]/30 text-[#f0b232] text-xs font-bold animate-pulse">
+          <span className="w-2 h-2 rounded-full bg-[#f0b232]" />
+          Reconectando...
+        </div>
+      );
+    }
+
+    if (isConnecting) {
+      return (
+        <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#5865F2]/10 border border-[#5865F2]/30 text-[#5865F2] text-xs font-bold">
+          <span className="w-2 h-2 rounded-full bg-[#5865F2] animate-ping" />
+          Conectando...
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#23a55a]/10 border border-[#23a55a]/30 text-[#23a55a] text-xs font-bold">
+        <span className="w-2 h-2 rounded-full bg-[#23a55a] animate-pulse" />
+        Voz Conectada
+      </div>
+    );
   };
 
   return (
-    <header className="h-14 px-4 md:px-6 bg-[#2b2d31] border-b border-[#1e1f22] flex items-center justify-between z-20 select-none">
+    <header className="h-14 px-4 md:px-6 bg-[#2b2d31] border-b border-[#1e1f22] flex items-center justify-between z-20 select-none shrink-0">
       {/* Nome do Canal no Estilo Discord */}
       <div className="flex items-center gap-3">
         <div className="w-8 h-8 rounded-lg bg-[#1e1f22] flex items-center justify-center text-[#949ba4]">
