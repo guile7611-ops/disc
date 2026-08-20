@@ -1,12 +1,62 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useParticipants, useLocalParticipant } from '@livekit/components-react';
-import { Users, Mic, MicOff, Monitor, Volume2, User } from 'lucide-react';
+import { RemoteParticipant } from 'livekit-client';
+import { VolumeContextMenu } from '@/components/VolumeContextMenu';
+import { Users, Mic, MicOff, Monitor, Volume2, User, VolumeX } from 'lucide-react';
 
 export function ParticipantList() {
   const participants = useParticipants();
   const { localParticipant } = useLocalParticipant();
+
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    participant: RemoteParticipant;
+  } | null>(null);
+
+  const [volumes, setVolumes] = useState<Record<string, number>>({});
+  const [mutedStates, setMutedStates] = useState<Record<string, boolean>>({});
+
+  const handleContextMenu = (e: React.MouseEvent, p: RemoteParticipant) => {
+    e.preventDefault();
+    if (p.identity === localParticipant.identity) return; // Não abre menu de volume para si mesmo
+
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      participant: p,
+    });
+  };
+
+  const handleVolumeChange = (p: RemoteParticipant, newVolume: number) => {
+    setVolumes((prev) => ({ ...prev, [p.identity]: newVolume }));
+
+    // Aplica o volume na API do LiveKit (1.0 = 100%, 2.0 = 200%)
+    try {
+      if (typeof p.setVolume === 'function') {
+        p.setVolume(newVolume / 100);
+      }
+    } catch (err) {
+      console.error('Erro ao ajustar volume do participante:', err);
+    }
+  };
+
+  const handleToggleMute = (p: RemoteParticipant) => {
+    const isCurrentlyMuted = !!mutedStates[p.identity];
+    const nextMuted = !isCurrentlyMuted;
+
+    setMutedStates((prev) => ({ ...prev, [p.identity]: nextMuted }));
+
+    try {
+      if (typeof p.setVolume === 'function') {
+        p.setVolume(nextMuted ? 0 : (volumes[p.identity] ?? 100) / 100);
+      }
+    } catch (err) {
+      console.error('Erro ao mutar participante:', err);
+    }
+  };
 
   return (
     <aside className="w-full md:w-72 bg-[#2b2d31] border-t md:border-t-0 md:border-l border-[#1e1f22] flex flex-col h-64 md:h-full z-10 shrink-0 select-none">
@@ -18,6 +68,7 @@ export function ParticipantList() {
             Membros Online — {participants.length}
           </h2>
         </div>
+        <span className="text-[10px] text-[#949ba4]">Clique c/ botão direito p/ volume</span>
       </div>
 
       {/* Lista de Participantes */}
@@ -27,11 +78,15 @@ export function ParticipantList() {
           const isMicEnabled = p.isMicrophoneEnabled;
           const isSpeaking = p.isSpeaking;
           const isScreenSharing = p.isScreenShareEnabled;
+          const userVolume = volumes[p.identity] ?? 100;
+          const isLocallyMuted = !!mutedStates[p.identity];
 
           return (
             <div
               key={p.identity}
-              className={`p-2 rounded-md transition-all flex items-center justify-between group ${
+              onContextMenu={(e) => !isLocal && handleContextMenu(e, p as RemoteParticipant)}
+              title={!isLocal ? 'Clique com o botão direito para ajustar volume ou mutar' : ''}
+              className={`p-2 rounded-md transition-all flex items-center justify-between group cursor-pointer ${
                 isSpeaking
                   ? 'bg-[#35373c] border-l-4 border-[#23a55a]'
                   : 'hover:bg-[#35373c]/70'
@@ -70,6 +125,11 @@ export function ParticipantList() {
                         Você
                       </span>
                     )}
+                    {!isLocal && (userVolume !== 100 || isLocallyMuted) && (
+                      <span className="px-1 py-0.2 rounded bg-[#313338] text-[#23a55a] text-[10px] font-mono font-bold">
+                        {isLocallyMuted ? 'Muted' : `${userVolume}%`}
+                      </span>
+                    )}
                   </div>
 
                   {/* Badges de Entrada de Voz e Compartilhamento de Tela */}
@@ -83,7 +143,7 @@ export function ParticipantList() {
                     {isScreenSharing && (
                       <span className="text-[11px] text-[#5865F2] font-semibold flex items-center gap-1">
                         <Monitor className="w-3 h-3" />
-                        Ao Vivo (60 FPS)
+                        Ao Vivo (1080p60)
                       </span>
                     )}
                   </div>
@@ -92,7 +152,11 @@ export function ParticipantList() {
 
               {/* Status do Microfone */}
               <div className="ml-2 shrink-0">
-                {isMicEnabled ? (
+                {isLocallyMuted ? (
+                  <div className="p-1.5 rounded-md bg-[#f23f43]/20 text-[#f23f43]" title="Mutado por você">
+                    <VolumeX className="w-4 h-4" />
+                  </div>
+                ) : isMicEnabled ? (
                   <div
                     className={`p-1.5 rounded-md ${
                       isSpeaking ? 'bg-[#23a55a]/20 text-[#23a55a]' : 'text-[#949ba4]'
@@ -111,6 +175,20 @@ export function ParticipantList() {
           );
         })}
       </div>
+
+      {/* Menu de Contexto do Botão Direito */}
+      {contextMenu && (
+        <VolumeContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          participantName={contextMenu.participant.name || 'Participante'}
+          volume={volumes[contextMenu.participant.identity] ?? 100}
+          isMuted={!!mutedStates[contextMenu.participant.identity]}
+          onVolumeChange={(vol) => handleVolumeChange(contextMenu.participant, vol)}
+          onToggleMute={() => handleToggleMute(contextMenu.participant)}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
     </aside>
   );
 }

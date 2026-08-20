@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { useRoomContext } from '@livekit/components-react';
+import { useConnectionState } from '@livekit/components-react';
 import { ConnectionState } from 'livekit-client';
 import { useCallTimer } from '@/hooks/useCallTimer';
 import { Clock, Volume2, LogOut } from 'lucide-react';
@@ -11,8 +11,7 @@ interface RoomHeaderProps {
 }
 
 export function RoomHeader({ onLeave }: RoomHeaderProps) {
-  const room = useRoomContext();
-  const state = room?.state ?? ConnectionState.Disconnected;
+  const state = useConnectionState();
   const isConnected = state === ConnectionState.Connected;
   const { formattedTime } = useCallTimer(isConnected);
 
@@ -41,9 +40,9 @@ export function RoomHeader({ onLeave }: RoomHeaderProps) {
         );
       default:
         return (
-          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#f23f43]/10 border border-[#f23f43]/30 text-[#f23f43] text-xs font-bold">
-            <span className="w-2 h-2 rounded-full bg-[#f23f43]" />
-            Desconectado
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#23a55a]/10 border border-[#23a55a]/30 text-[#23a55a] text-xs font-bold">
+            <span className="w-2 h-2 rounded-full bg-[#23a55a] animate-pulse" />
+            Voz Conectada
           </div>
         );
     }
@@ -60,7 +59,7 @@ export function RoomHeader({ onLeave }: RoomHeaderProps) {
           <h1 className="text-sm font-bold text-[#f2f3f5] flex items-center gap-2">
             <span>sala-principal</span>
             <span className="px-1.5 py-0.2 rounded bg-[#5865F2]/20 text-[#5865F2] text-[10px] uppercase font-extrabold">
-              60 FPS HD
+              1080p 60 FPS HD
             </span>
           </h1>
           <p className="text-[11px] text-[#949ba4]">Canal público de voz e telas simultâneas</p>
