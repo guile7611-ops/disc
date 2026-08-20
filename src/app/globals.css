@@ -2,11 +2,18 @@
 
 @layer base {
   body {
-    @apply bg-slate-950 text-slate-100;
+    @apply bg-[#1e1f22] text-[#dbdee1];
   }
 }
 
-/* Custom scrollbars para o painel de participantes */
+/* Remover qualquer contorno/borda amarela de vídeos ou elementos focados */
+video, video:focus, video:focus-visible, video:hover {
+  outline: none !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* Custom scrollbars para a lista de membros e grades */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -17,10 +24,10 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #334155;
+  background: #2b2d31;
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #475569;
+  background: #383a40;
 }

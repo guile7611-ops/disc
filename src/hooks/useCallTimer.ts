@@ -6,16 +6,16 @@ export function useCallTimer(isConnected: boolean) {
   const [seconds, setSeconds] = useState(0);
 
   useEffect(() => {
-    if (!isConnected) {
-      setSeconds(0);
-      return;
-    }
+    if (!isConnected) return;
 
     const interval = setInterval(() => {
       setSeconds((prev) => prev + 1);
     }, 1000);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      setSeconds(0);
+    };
   }, [isConnected]);
 
   const formatTime = () => {

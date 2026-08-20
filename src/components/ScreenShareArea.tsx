@@ -1,88 +1,187 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useTracks, VideoTrack } from '@livekit/components-react';
 import { Track } from 'livekit-client';
-import { Monitor, Share2, User } from 'lucide-react';
+import { Monitor, Grid, Maximize, Maximize2, Minimize, Radio, User } from 'lucide-react';
 
 export function ScreenShareArea() {
-  // Busca todas as faixas ativas de compartilhamento de tela
   const screenShareTracks = useTracks([Track.Source.ScreenShare]);
-  const [selectedIndex, setSelectedIndex] = useState<number>(0);
+  const [focusedTrackSid, setFocusedTrackSid] = useState<string | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  // Reseta ou ajusta o índice selecionado se a lista mudar
   useEffect(() => {
-    if (selectedIndex >= screenShareTracks.length) {
-      setSelectedIndex(Math.max(0, screenShareTracks.length - 1));
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    };
+  }, []);
+
+  const toggleFullscreen = async () => {
+    if (!containerRef.current) return;
+    try {
+      if (!document.fullscreenElement) {
+        await containerRef.current.requestFullscreen();
+      } else {
+        await document.exitFullscreen();
+      }
+    } catch (err) {
+      console.error('Erro ao alternar tela cheia:', err);
     }
-  }, [screenShareTracks.length, selectedIndex]);
+  };
 
   // Se ninguém estiver compartilhando a tela
   if (screenShareTracks.length === 0) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center p-6 text-center bg-slate-950 relative overflow-hidden">
-        <div className="w-20 h-20 rounded-2xl bg-indigo-600/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 mb-4 shadow-xl shadow-indigo-950/30">
-          <Monitor className="w-10 h-10" />
+      <div className="flex-1 flex flex-col items-center justify-center p-6 text-center bg-[#313338] relative overflow-hidden select-none">
+        <div className="w-24 h-24 rounded-full bg-[#2b2d31] border border-[#3f4248] flex items-center justify-center text-[#5865F2] mb-4 shadow-2xl shadow-black/50">
+          <Monitor className="w-12 h-12" />
         </div>
-        <h3 className="text-lg font-semibold text-slate-200 mb-1">
-          Nenhum compartilhamento de tela ativo
+        <h3 className="text-xl font-bold text-[#f2f3f5] mb-2">
+          Nenhum compartilhamento de tela no momento
         </h3>
-        <p className="text-sm text-slate-400 max-w-sm">
-          Clique no botão <span className="text-indigo-400 font-medium">Compartilhar tela</span> na barra inferior para transmitir sua tela, código ou apresentação para a sala.
+        <p className="text-sm text-[#949ba4] max-w-md">
+          Compartilhe sua tela em até <strong className="text-[#23a55a]">60 FPS</strong>. Múltiplos participantes podem transmitir a tela ao mesmo tempo na sala.
         </p>
       </div>
     );
   }
 
-  const activeTrack = screenShareTracks[selectedIndex];
-  const participantName = activeTrack?.participant?.name || 'Participante';
+  // Se o usuário selecionou uma tela específica para Foco (Spotlight)
+  const focusedTrack = focusedTrackSid
+    ? screenShareTracks.find((t) => t.publication?.trackSid === focusedTrackSid)
+    : null;
+
+  if (focusedTrack) {
+    const participantName = focusedTrack.participant?.name || 'Participante';
+
+    return (
+      <div
+        ref={containerRef}
+        className="flex-1 bg-black flex flex-col relative overflow-hidden outline-none border-none ring-0 select-none"
+      >
+        {/* Banner Superior no Modo Foco */}
+        <div className="absolute top-4 left-4 z-20 bg-[#1e1f22]/90 backdrop-blur-md border border-[#2b2d31] px-4 py-2 rounded-lg flex items-center gap-3 shadow-xl">
+          <span className="px-2 py-0.5 rounded bg-[#f23f43] text-white font-bold text-[10px] uppercase tracking-wider flex items-center gap-1">
+            <Radio className="w-3 h-3 animate-pulse" />
+            AO VIVO 60 FPS
+          </span>
+          <div className="flex items-center gap-1.5 text-xs text-[#dbdee1]">
+            <User className="w-4 h-4 text-[#5865F2]" />
+            <span>Tela de <strong className="font-bold text-white">{participantName}</strong></span>
+          </div>
+
+          <button
+            onClick={() => setFocusedTrackSid(null)}
+            className="ml-3 px-2.5 py-1 rounded bg-[#313338] hover:bg-[#3b3e45] text-xs font-semibold text-[#dbdee1] flex items-center gap-1 transition-colors cursor-pointer"
+          >
+            <Grid className="w-3.5 h-3.5" />
+            <span>Ver todas ({screenShareTracks.length})</span>
+          </button>
+        </div>
+
+        {/* Botão de Tela Cheia Nativo (Fullscreen) */}
+        <button
+          onClick={toggleFullscreen}
+          className="absolute top-4 right-4 z-20 p-2.5 rounded-lg bg-[#1e1f22]/90 hover:bg-[#5865F2] text-white border border-[#2b2d31] transition-all cursor-pointer shadow-xl flex items-center gap-1.5 text-xs font-bold"
+          title={isFullscreen ? 'Sair da tela cheia' : 'Tela cheia'}
+        >
+          {isFullscreen ? (
+            <>
+              <Minimize className="w-4 h-4" />
+              <span className="hidden sm:inline">Sair da Tela Cheia</span>
+            </>
+          ) : (
+            <>
+              <Maximize className="w-4 h-4" />
+              <span className="hidden sm:inline">Tela Cheia</span>
+            </>
+          )}
+        </button>
+
+        {/* Vídeo em Foco sem qualquer borda ou barra amarela */}
+        <div className="w-full h-full flex items-center justify-center p-0 outline-none border-none ring-0 bg-black">
+          <VideoTrack
+            trackRef={focusedTrack}
+            className="w-full h-full object-contain max-h-full max-w-full outline-none border-none ring-0 shadow-none"
+          />
+        </div>
+      </div>
+    );
+  }
+
+  // Grade de Telas Simultâneas (Estilo Discord)
+  const gridColsClass =
+    screenShareTracks.length === 1
+      ? 'grid-cols-1'
+      : screenShareTracks.length === 2
+      ? 'grid-cols-1 md:grid-cols-2'
+      : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3';
 
   return (
-    <div className="flex-1 bg-black flex flex-col relative overflow-hidden">
-      {/* Seletor de Telas se houver mais de uma transmissão */}
-      {screenShareTracks.length > 1 && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 bg-slate-900/90 backdrop-blur-md border border-slate-800 p-1.5 rounded-xl flex items-center gap-1.5 shadow-2xl">
-          <span className="text-xs text-slate-400 px-2 font-medium flex items-center gap-1">
-            <Share2 className="w-3.5 h-3.5 text-indigo-400" />
-            Transmissões ({screenShareTracks.length}):
-          </span>
-          {screenShareTracks.map((t, idx) => {
-            const isSelected = idx === selectedIndex;
-            const name = t.participant?.name || `Tela ${idx + 1}`;
-            return (
+    <div
+      ref={containerRef}
+      className="flex-1 bg-[#1e1f22] p-3 flex flex-col relative overflow-hidden outline-none border-none ring-0 select-none"
+    >
+      {/* Barra Superior da Grade */}
+      <div className="mb-3 px-3 py-2 bg-[#2b2d31] rounded-lg border border-[#313338] flex items-center justify-between z-10">
+        <span className="text-xs font-bold text-[#dbdee1] flex items-center gap-2">
+          <span className="w-2.5 h-2.5 rounded-full bg-[#f23f43] animate-pulse" />
+          {screenShareTracks.length} Transmissões ao vivo simultâneas (60 FPS)
+        </span>
+
+        <button
+          onClick={toggleFullscreen}
+          className="px-2.5 py-1 rounded bg-[#313338] hover:bg-[#3b3e45] text-white text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-[#3f4248]"
+          title="Modo Tela Cheia"
+        >
+          {isFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
+          <span>{isFullscreen ? 'Sair da Tela Cheia' : 'Tela Cheia'}</span>
+        </button>
+      </div>
+
+      {/* Grade de Telas Simultâneas sem bordas amarelas */}
+      <div className={`flex-1 grid ${gridColsClass} gap-3 h-full overflow-y-auto`}>
+        {screenShareTracks.map((trackRef) => {
+          const participantName = trackRef.participant?.name || 'Participante';
+          const trackSid = trackRef.publication?.trackSid || trackRef.participant.identity;
+
+          return (
+            <div
+              key={trackSid}
+              className="relative group bg-black border border-[#2b2d31] hover:border-[#5865F2] rounded-xl overflow-hidden flex items-center justify-center transition-all shadow-xl min-h-48 outline-none ring-0"
+            >
+              {/* Overlay do Participante */}
+              <div className="absolute top-3 left-3 z-20 bg-[#1e1f22]/90 backdrop-blur-md border border-[#2b2d31] px-3 py-1.5 rounded-md flex items-center gap-2 text-xs">
+                <span className="w-2 h-2 rounded-full bg-[#f23f43] animate-pulse" />
+                <span className="font-semibold text-white truncate max-w-40">{participantName}</span>
+                <span className="px-1.5 py-0.2 rounded bg-[#5865F2]/20 text-[#5865F2] text-[10px] font-bold">
+                  60 FPS
+                </span>
+              </div>
+
+              {/* Botão Expandir Foco */}
               <button
-                key={t.participant.identity + t.publication?.trackSid}
-                onClick={() => setSelectedIndex(idx)}
-                className={`px-3 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
-                  isSelected
-                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                }`}
+                onClick={() => setFocusedTrackSid(trackRef.publication?.trackSid || null)}
+                className="absolute top-3 right-3 z-20 p-2 rounded-md bg-[#1e1f22]/80 hover:bg-[#5865F2] text-white opacity-0 group-hover:opacity-100 transition-all cursor-pointer shadow-lg"
+                title="Expandir tela em foco"
               >
-                {name}
+                <Maximize2 className="w-4 h-4" />
               </button>
-            );
-          })}
-        </div>
-      )}
 
-      {/* Banner Superior com o Nome de Quem Compartilha */}
-      {screenShareTracks.length === 1 && (
-        <div className="absolute top-4 left-4 z-20 bg-slate-900/80 backdrop-blur-md border border-slate-800/80 px-3 py-1.5 rounded-lg flex items-center gap-2 text-xs text-slate-200 shadow-lg">
-          <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
-          <User className="w-3.5 h-3.5 text-indigo-400" />
-          <span>Tela de <strong className="font-semibold text-white">{participantName}</strong></span>
-        </div>
-      )}
-
-      {/* Área Principal de Exibição do Vídeo */}
-      <div className="w-full h-full flex items-center justify-center relative">
-        {activeTrack && (
-          <VideoTrack
-            trackRef={activeTrack}
-            className="w-full h-full object-contain max-h-full max-w-full"
-          />
-        )}
+              {/* Reprodução do Vídeo da Tela sem borda amarela */}
+              <VideoTrack
+                trackRef={trackRef}
+                className="w-full h-full object-contain max-h-full outline-none border-none ring-0 shadow-none"
+              />
+            </div>
+          );
+        })}
       </div>
     </div>
   );

@@ -1,20 +1,23 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useSyncExternalStore } from 'react';
 
-export function useScreenShareSupport() {
-  const [isSupported, setIsSupported] = useState<boolean>(true);
+function subscribe() {
+  return () => {};
+}
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
+function getSnapshot(): boolean {
+  return (
+    typeof navigator !== 'undefined' &&
+    !!navigator.mediaDevices &&
+    typeof navigator.mediaDevices.getDisplayMedia === 'function'
+  );
+}
 
-    // Dispositivos móveis ou navegadores sem getDisplayMedia não suportam compartilhamento de tela
-    const supported =
-      !!navigator.mediaDevices &&
-      typeof navigator.mediaDevices.getDisplayMedia === 'function';
+function getServerSnapshot(): boolean {
+  return true;
+}
 
-    setIsSupported(supported);
-  }, []);
-
-  return isSupported;
+export function useScreenShareSupport(): boolean {
+  return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 }

@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { useLocalParticipant, useRoomContext } from '@livekit/components-react';
 import { useScreenShareSupport } from '@/hooks/useScreenShareSupport';
-import { Mic, MicOff, Monitor, MonitorOff, PhoneOff, Loader2 } from 'lucide-react';
+import { Mic, MicOff, Monitor, MonitorOff, PhoneOff, Loader2, Volume2 } from 'lucide-react';
 
 interface ControlBarProps {
   onLeave: () => void;
@@ -40,13 +40,13 @@ export function ControlBar({ onLeave }: ControlBarProps) {
     try {
       const nextState = !isScreenShareEnabled;
       await localParticipant.setScreenShareEnabled(nextState, {
-        audio: true, // Solicita áudio do sistema quando suportado pelo navegador
+        audio: true, // Captura áudio do sistema quando suportado
         resolution: {
           width: 1920,
           height: 1080,
-          frameRate: 30,
+          frameRate: 60, // Configurado estritamente para 60 FPS
         },
-        contentHint: 'detail', // Otimizado para nitidez de texto e código
+        contentHint: 'detail',
       });
     } catch (err) {
       console.error('Erro ao alternar compartilhamento de tela:', err);
@@ -61,78 +61,99 @@ export function ControlBar({ onLeave }: ControlBarProps) {
   };
 
   return (
-    <footer className="h-20 bg-slate-900/90 backdrop-blur-md border-t border-slate-800 px-4 flex items-center justify-center gap-4 z-20 shrink-0">
-      {/* Botão Microfone */}
-      <div className="relative group">
-        <button
-          onClick={toggleMicrophone}
-          disabled={isMicLoading}
-          className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
-            isMicrophoneEnabled
-              ? 'bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700'
-              : 'bg-rose-500/20 hover:bg-rose-500/30 text-rose-400 border border-rose-500/40'
-          }`}
-          aria-label={isMicrophoneEnabled ? 'Desativar microfone' : 'Ativar microfone'}
-        >
-          {isMicLoading ? (
-            <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
-          ) : isMicrophoneEnabled ? (
-            <Mic className="w-5 h-5" />
-          ) : (
-            <MicOff className="w-5 h-5" />
-          )}
-        </button>
-        {/* Tooltip em Português */}
-        <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block bg-slate-950 text-slate-200 text-xs px-2.5 py-1 rounded-md border border-slate-800 whitespace-nowrap shadow-lg">
-          {isMicrophoneEnabled ? 'Desativar microfone' : 'Ativar microfone'}
+    <footer className="h-20 bg-[#232428] border-t border-[#1e1f22] px-4 md:px-6 flex items-center justify-between z-20 shrink-0 select-none">
+      {/* Indicador de Status da Voz - Estilo Discord */}
+      <div className="hidden sm:flex items-center gap-3 min-w-48">
+        <div className="w-9 h-9 rounded-full bg-[#2b2d31] flex items-center justify-center text-[#23a55a]">
+          <Volume2 className="w-5 h-5 animate-pulse" />
+        </div>
+        <div>
+          <p className="text-xs font-bold text-[#23a55a] flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-[#23a55a] animate-ping" />
+            Voz Conectada
+          </p>
+          <p className="text-[11px] text-[#949ba4] truncate max-w-36">
+            Sala principal / RTC 60fps
+          </p>
         </div>
       </div>
 
-      {/* Botão Compartilhar Tela */}
-      <div className="relative group">
-        <button
-          onClick={toggleScreenShare}
-          disabled={isScreenLoading || !isScreenShareSupported}
-          className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
-            !isScreenShareSupported
-              ? 'bg-slate-900 text-slate-600 border border-slate-800 cursor-not-allowed'
+      {/* Botões Centrais de Controle */}
+      <div className="flex items-center gap-3 mx-auto sm:mx-0">
+        {/* Botão Microfone */}
+        <div className="relative group">
+          <button
+            onClick={toggleMicrophone}
+            disabled={isMicLoading}
+            className={`w-12 h-12 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+              isMicrophoneEnabled
+                ? 'bg-[#313338] hover:bg-[#3b3e45] text-[#dbdee1] border border-[#3f4248]'
+                : 'bg-[#f23f43] hover:bg-[#d83a3e] text-white shadow-lg shadow-rose-950/40'
+            }`}
+            aria-label={isMicrophoneEnabled ? 'Desativar microfone' : 'Ativar microfone'}
+          >
+            {isMicLoading ? (
+              <Loader2 className="w-5 h-5 animate-spin text-[#949ba4]" />
+            ) : isMicrophoneEnabled ? (
+              <Mic className="w-5 h-5" />
+            ) : (
+              <MicOff className="w-5 h-5" />
+            )}
+          </button>
+          <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block bg-[#111214] text-[#dbdee1] text-xs px-3 py-1.5 rounded-md border border-[#2b2d31] whitespace-nowrap shadow-xl">
+            {isMicrophoneEnabled ? 'Desativar microfone' : 'Ativar microfone'}
+          </div>
+        </div>
+
+        {/* Botão Compartilhar Tela (60 FPS) */}
+        <div className="relative group">
+          <button
+            onClick={toggleScreenShare}
+            disabled={isScreenLoading || !isScreenShareSupported}
+            className={`w-12 h-12 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+              !isScreenShareSupported
+                ? 'bg-[#1e1f22] text-[#4e5058] border border-[#2b2d31] cursor-not-allowed'
+                : isScreenShareEnabled
+                ? 'bg-[#23a55a] hover:bg-[#1d8a4b] text-white shadow-lg shadow-emerald-950/40 border border-[#23a55a]'
+                : 'bg-[#313338] hover:bg-[#3b3e45] text-[#dbdee1] border border-[#3f4248]'
+            }`}
+            aria-label={isScreenShareEnabled ? 'Interromper compartilhamento' : 'Compartilhar tela (60 FPS)'}
+          >
+            {isScreenLoading ? (
+              <Loader2 className="w-5 h-5 animate-spin text-[#949ba4]" />
+            ) : isScreenShareEnabled ? (
+              <MonitorOff className="w-5 h-5" />
+            ) : (
+              <Monitor className="w-5 h-5" />
+            )}
+          </button>
+          <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block bg-[#111214] text-[#dbdee1] text-xs px-3 py-1.5 rounded-md border border-[#2b2d31] whitespace-nowrap shadow-xl">
+            {!isScreenShareSupported
+              ? 'Compartilhamento de tela indisponível no dispositivo'
               : isScreenShareEnabled
-              ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30 border border-indigo-500'
-              : 'bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700'
-          }`}
-          aria-label={isScreenShareEnabled ? 'Interromper compartilhamento' : 'Compartilhar tela'}
-        >
-          {isScreenLoading ? (
-            <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
-          ) : isScreenShareEnabled ? (
-            <MonitorOff className="w-5 h-5" />
-          ) : (
-            <Monitor className="w-5 h-5" />
-          )}
-        </button>
-        {/* Tooltip em Português */}
-        <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block bg-slate-950 text-slate-200 text-xs px-2.5 py-1 rounded-md border border-slate-800 whitespace-nowrap shadow-lg">
-          {!isScreenShareSupported
-            ? 'O compartilhamento de tela não é suportado neste navegador/dispositivo móvel'
-            : isScreenShareEnabled
-            ? 'Interromper compartilhamento'
-            : 'Compartilhar tela (1080p@30fps)'}
+              ? 'Interromper compartilhamento'
+              : 'Compartilhar tela (1080p @ 60 FPS)'}
+          </div>
+        </div>
+
+        {/* Botão Desconectar */}
+        <div className="relative group">
+          <button
+            onClick={handleDisconnect}
+            className="w-12 h-12 rounded-full bg-[#f23f43] hover:bg-[#d83a3e] text-white flex items-center justify-center transition-all shadow-lg shadow-rose-950/50 cursor-pointer"
+            aria-label="Desconectar da chamada"
+          >
+            <PhoneOff className="w-5 h-5" />
+          </button>
+          <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block bg-[#111214] text-[#dbdee1] text-xs px-3 py-1.5 rounded-md border border-[#2b2d31] whitespace-nowrap shadow-xl">
+            Desconectar da chamada
+          </div>
         </div>
       </div>
 
-      {/* Botão Sair da Chamada */}
-      <div className="relative group">
-        <button
-          onClick={handleDisconnect}
-          className="w-12 h-12 rounded-2xl bg-rose-600 hover:bg-rose-500 text-white flex items-center justify-center transition-all shadow-lg shadow-rose-600/30 border border-rose-500 cursor-pointer"
-          aria-label="Sair da chamada"
-        >
-          <PhoneOff className="w-5 h-5" />
-        </button>
-        {/* Tooltip em Português */}
-        <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block bg-slate-950 text-slate-200 text-xs px-2.5 py-1 rounded-md border border-slate-800 whitespace-nowrap shadow-lg">
-          Sair da chamada
-        </div>
+      {/* Espaçador para alinhamento */}
+      <div className="hidden sm:block min-w-48 text-right text-xs text-[#949ba4]">
+        Transmissão 60 FPS
       </div>
     </footer>
   );
