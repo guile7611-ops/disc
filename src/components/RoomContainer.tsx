@@ -22,8 +22,24 @@ export function RoomContainer({ token, wsUrl, onLeave }: RoomContainerProps) {
         token={token}
         connect={true}
         audio={true} // Habilita áudio na entrada
-        video={false} // Desativa webcam
+        video={false} // Desativa webcam para economizar RAM e CPU
         onDisconnected={onLeave}
+        options={{
+          adaptiveStream: true, // Reduz o consumo de RAM e GPU pausando faixas não visíveis
+          dynacast: true,       // Otimiza banda e decodificação WebRTC dinamicamente
+          publishDefaults: {
+            simulcast: true,
+            screenShareEncoding: {
+              maxBitrate: 3_000_000,
+              maxFramerate: 60,
+            },
+          },
+          audioCaptureDefaults: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        }}
         onError={(err) => {
           console.error('Erro na sala LiveKit:', err);
         }}
@@ -36,7 +52,7 @@ export function RoomContainer({ token, wsUrl, onLeave }: RoomContainerProps) {
           overflow: 'hidden',
         }}
       >
-        {/* Renderer de áudio remoto obrigatório */}
+        {/* Renderer de áudio remoto altamente otimizado */}
         <RoomAudioRenderer />
 
         {/* Alerta de Autoplay do Navegador */}
