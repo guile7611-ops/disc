@@ -25,12 +25,12 @@ export function RoomContainer({ token, wsUrl, onLeave }: RoomContainerProps) {
         video={false} // Desativa webcam para economizar RAM e CPU
         onDisconnected={onLeave}
         options={{
-          adaptiveStream: true, // Reduz o consumo de RAM e GPU pausando faixas não visíveis
-          dynacast: true,       // Otimiza banda e decodificação WebRTC dinamicamente
+          adaptiveStream: true, // Reduz uso de RAM/GPU em faixas não visíveis
+          dynacast: true,       // Otimiza decodificação WebRTC dinamicamente
           publishDefaults: {
-            simulcast: true,
+            simulcast: false,   // Garante que o compartilhamento de tela não seja reduzido (Full HD 1080p puro)
             screenShareEncoding: {
-              maxBitrate: 3_000_000,
+              maxBitrate: 6_000_000, // 6 Mbps de taxa de bits para cristalina qualidade Full HD (1920x1080)
               maxFramerate: 60,
             },
           },
@@ -52,7 +52,7 @@ export function RoomContainer({ token, wsUrl, onLeave }: RoomContainerProps) {
           overflow: 'hidden',
         }}
       >
-        {/* Renderer de áudio remoto altamente otimizado */}
+        {/* Renderer de áudio remoto */}
         <RoomAudioRenderer />
 
         {/* Alerta de Autoplay do Navegador */}

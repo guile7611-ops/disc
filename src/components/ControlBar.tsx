@@ -46,7 +46,7 @@ export function ControlBar({ onLeave }: ControlBarProps) {
           height: 1080,
           frameRate: 60,
         },
-        contentHint: 'detail',
+        contentHint: 'detail', // Nitidez cristalina para textos e código
       });
     } catch (err) {
       console.error('Erro ao alternar compartilhamento de tela:', err);
@@ -73,7 +73,7 @@ export function ControlBar({ onLeave }: ControlBarProps) {
             Voz Conectada
           </p>
           <p className="text-[11px] text-[#949ba4] truncate max-w-36">
-            Sala principal / 1080p 60fps
+            Sala principal / Full HD 60fps
           </p>
         </div>
       </div>
@@ -105,7 +105,7 @@ export function ControlBar({ onLeave }: ControlBarProps) {
           </div>
         </div>
 
-        {/* Botão Compartilhar Tela (1080p 60 FPS) */}
+        {/* Botão Compartilhar Tela (Full HD 1080p 60 FPS) */}
         <div className="relative group">
           <button
             onClick={toggleScreenShare}
@@ -117,7 +117,7 @@ export function ControlBar({ onLeave }: ControlBarProps) {
                 ? 'bg-[#23a55a] hover:bg-[#1d8a4b] text-white shadow-lg shadow-emerald-950/40 border border-[#23a55a]'
                 : 'bg-[#313338] hover:bg-[#3b3e45] text-[#dbdee1] border border-[#3f4248]'
             }`}
-            aria-label={isScreenShareEnabled ? 'Interromper compartilhamento' : 'Compartilhar tela (1080p 60 FPS)'}
+            aria-label={isScreenShareEnabled ? 'Interromper compartilhamento' : 'Compartilhar tela (Full HD 1080p 60 FPS)'}
           >
             {isScreenLoading ? (
               <Loader2 className="w-5 h-5 animate-spin text-[#949ba4]" />
@@ -132,7 +132,7 @@ export function ControlBar({ onLeave }: ControlBarProps) {
               ? 'Compartilhamento de tela indisponível no dispositivo'
               : isScreenShareEnabled
               ? 'Interromper compartilhamento'
-              : 'Compartilhar tela (1920x1080 @ 60 FPS)'}
+              : 'Compartilhar tela (Full HD 1920x1080 @ 60 FPS)'}
           </div>
         </div>
 
@@ -153,7 +153,7 @@ export function ControlBar({ onLeave }: ControlBarProps) {
 
       {/* Espaçador para alinhamento */}
       <div className="hidden sm:block min-w-48 text-right text-xs text-[#949ba4]">
-        Transmissão 1080p 60 FPS
+        Full HD (1080p @ 60 FPS)
       </div>
     </footer>
   );
