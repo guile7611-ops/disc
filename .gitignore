@@ -21,6 +21,10 @@
 /build
 /dist
 /dist-build
+/dist-app
+/dist-psyduck
+/out-app
+/release
 
 # misc
 .DS_Store
