@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useLocalParticipant, useRoomContext } from '@livekit/components-react';
-import { Track } from 'livekit-client';
+import { Track, LocalVideoTrack } from 'livekit-client';
 import { useScreenShareSupport } from '@/hooks/useScreenShareSupport';
 import { useMicrophones } from '@/hooks/useMicrophones';
 import { Mic, MicOff, Monitor, MonitorOff, PhoneOff, Loader2, Volume2, ChevronUp, Check, Settings } from 'lucide-react';
@@ -20,6 +20,7 @@ export function ControlBar({ onLeave }: ControlBarProps) {
   const [isMicLoading, setIsMicLoading] = useState(false);
   const [isScreenLoading, setIsScreenLoading] = useState(false);
   const [showMicMenu, setShowMicMenu] = useState(false);
+  const customTrackRef = useRef<LocalVideoTrack | null>(null);
 
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -56,38 +57,34 @@ export function ControlBar({ onLeave }: ControlBarProps) {
   const toggleScreenShare = async () => {
     if (!localParticipant || isScreenLoading || !isScreenShareSupported) return;
     setIsScreenLoading(true);
-    try {
-      const nextState = !isScreenShareEnabled;
-      await localParticipant.setScreenShareEnabled(nextState, {
-        audio: true,
-        resolution: {
-          width: 1920,
-          height: 1080,
-          frameRate: 60,
-        },
-        contentHint: 'motion',
-      });
 
-      if (nextState) {
-        setTimeout(() => {
-          try {
-            const screenTrackPub = localParticipant.getTrackPublication(Track.Source.ScreenShare);
-            if (screenTrackPub && screenTrackPub.track) {
-              const sender = screenTrackPub.track.sender;
-              if (sender && typeof sender.getParameters === 'function') {
-                const params = sender.getParameters();
-                if (params && params.encodings && params.encodings.length > 0) {
-                  params.encodings[0].maxBitrate = 10_000_000;
-                  params.encodings[0].maxFramerate = 60;
-                  params.degradationPreference = 'maintain-framerate';
-                  sender.setParameters(params).catch(() => {});
-                }
-              }
-            }
-          } catch (e) {
-            console.error('Aviso ao ajustar WebRTC sender:', e);
+    try {
+      // Se estiver no aplicativo Desktop Electron, usa a captura nativa GDI/DXGI sem borda amarela
+      if (typeof window !== 'undefined' && window.electronAPI?.isElectron) {
+        if (isScreenShareEnabled || customTrackRef.current) {
+          // Parar transmissão de tela atual
+          if (customTrackRef.current) {
+            await localParticipant.unpublishTrack(customTrackRef.current);
+            customTrackRef.current.stop();
+            customTrackRef.current = null;
           }
-        }, 600);
+          await localParticipant.setScreenShareEnabled(false);
+        } else {
+          // Abrir seletor de tela nativo do Electron
+          await window.electronAPI.openScreenPicker();
+        }
+      } else {
+        // Modo Web Navegador Padrão
+        const nextState = !isScreenShareEnabled;
+        await localParticipant.setScreenShareEnabled(nextState, {
+          audio: true,
+          resolution: {
+            width: 1920,
+            height: 1080,
+            frameRate: 60,
+          },
+          contentHint: 'motion',
+        });
       }
     } catch (err) {
       console.error('Erro ao alternar compartilhamento de tela:', err);
@@ -96,7 +93,60 @@ export function ControlBar({ onLeave }: ControlBarProps) {
     }
   };
 
+  // Escuta a seleção de tela do Electron para iniciar a captura GDI limpa
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.electronAPI?.isElectron) return;
+
+    const cleanup = window.electronAPI.onSourceSelected(async (sourceId) => {
+      if (!sourceId || !localParticipant) return;
+
+      setIsScreenLoading(true);
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: {
+            mandatory: {
+              chromeMediaSource: 'desktop',
+              chromeMediaSourceId: sourceId,
+              minFrameRate: 60,
+              maxFrameRate: 60,
+              minWidth: 1920,
+              maxWidth: 1920,
+              minHeight: 1080,
+              maxHeight: 1080,
+            },
+          } as unknown as MediaTrackConstraints,
+        });
+
+        const videoMediaTrack = stream.getVideoTracks()[0];
+        const localVideoTrack = new LocalVideoTrack(videoMediaTrack);
+
+        // Publica a faixa de vídeo limpa (sem bordas amarelas) no LiveKit a 60 FPS
+        const pub = await localParticipant.publishTrack(localVideoTrack, {
+          name: 'screen_share',
+          source: Track.Source.ScreenShare,
+        });
+
+        if (pub && pub.track) {
+          customTrackRef.current = pub.track as LocalVideoTrack;
+        }
+      } catch (err) {
+        console.error('Erro ao iniciar captura GDI de janela no Electron:', err);
+      } finally {
+        setIsScreenLoading(false);
+      }
+    });
+
+    return () => {
+      cleanup();
+    };
+  }, [localParticipant]);
+
   const handleDisconnect = () => {
+    if (customTrackRef.current) {
+      customTrackRef.current.stop();
+      customTrackRef.current = null;
+    }
     room?.disconnect();
     onLeave();
   };
@@ -218,15 +268,15 @@ export function ControlBar({ onLeave }: ControlBarProps) {
             className={`w-12 h-12 rounded-full flex items-center justify-center transition-all cursor-pointer ${
               !isScreenShareSupported
                 ? 'bg-[#1e1f22] text-[#4e5058] border border-[#2b2d31] cursor-not-allowed'
-                : isScreenShareEnabled
+                : isScreenShareEnabled || customTrackRef.current
                 ? 'bg-[#23a55a] hover:bg-[#1d8a4b] text-white shadow-lg shadow-emerald-950/40 border border-[#23a55a]'
                 : 'bg-[#313338] hover:bg-[#3b3e45] text-[#dbdee1] border border-[#3f4248]'
             }`}
-            aria-label={isScreenShareEnabled ? 'Interromper compartilhamento' : 'Compartilhar tela (Full HD 1080p 60 FPS)'}
+            aria-label={isScreenShareEnabled || customTrackRef.current ? 'Interromper compartilhamento' : 'Compartilhar tela (Full HD 1080p 60 FPS)'}
           >
             {isScreenLoading ? (
               <Loader2 className="w-5 h-5 animate-spin text-[#949ba4]" />
-            ) : isScreenShareEnabled ? (
+            ) : isScreenShareEnabled || customTrackRef.current ? (
               <MonitorOff className="w-5 h-5" />
             ) : (
               <Monitor className="w-5 h-5" />
@@ -235,7 +285,7 @@ export function ControlBar({ onLeave }: ControlBarProps) {
           <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block bg-[#111214] text-[#dbdee1] text-xs px-3 py-1.5 rounded-md border border-[#2b2d31] whitespace-nowrap shadow-xl">
             {!isScreenShareSupported
               ? 'Compartilhamento de tela indisponível no dispositivo'
-              : isScreenShareEnabled
+              : isScreenShareEnabled || customTrackRef.current
               ? 'Interromper compartilhamento'
               : 'Compartilhar tela (Full HD 1920x1080 @ 60 FPS)'}
           </div>
