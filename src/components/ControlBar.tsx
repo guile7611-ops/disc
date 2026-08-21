@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { useLocalParticipant, useRoomContext } from '@livekit/components-react';
+import { Track } from 'livekit-client';
 import { useScreenShareSupport } from '@/hooks/useScreenShareSupport';
 import { Mic, MicOff, Monitor, MonitorOff, PhoneOff, Loader2, Volume2, Info } from 'lucide-react';
 
@@ -41,8 +42,9 @@ export function ControlBar({ onLeave }: ControlBarProps) {
     try {
       const nextState = !isScreenShareEnabled;
       if (nextState) {
-        setShowTip(true); // Exibe dica para remover a borda amarela do Windows
+        setShowTip(true);
       }
+
       await localParticipant.setScreenShareEnabled(nextState, {
         audio: true, // Captura áudio do sistema
         resolution: {
@@ -50,8 +52,31 @@ export function ControlBar({ onLeave }: ControlBarProps) {
           height: 1080,
           frameRate: 60,
         },
-        contentHint: 'motion', // 'motion' otimiza para 60 FPS dinâmico de jogos e vídeos
+        contentHint: 'motion', // Prioriza 60 FPS e fluidez para jogos e vídeos
       });
+
+      // Se estiver iniciando o compartilhamento, força os parâmetros WebRTC para 10 Mbps e 60 FPS sem queda
+      if (nextState) {
+        setTimeout(() => {
+          try {
+            const screenTrackPub = localParticipant.getTrackPublication(Track.Source.ScreenShare);
+            if (screenTrackPub && screenTrackPub.track) {
+              const sender = screenTrackPub.track.sender;
+              if (sender && typeof sender.getParameters === 'function') {
+                const params = sender.getParameters();
+                if (params && params.encodings && params.encodings.length > 0) {
+                  params.encodings[0].maxBitrate = 10_000_000; // 10 Mbps ultra-hd
+                  params.encodings[0].maxFramerate = 60;
+                  params.degradationPreference = 'maintain-framerate';
+                  sender.setParameters(params).catch(() => {});
+                }
+              }
+            }
+          } catch (e) {
+            console.error('Aviso ao ajustar WebRTC sender:', e);
+          }
+        }, 600);
+      }
     } catch (err) {
       console.error('Erro ao alternar compartilhamento de tela:', err);
     } finally {

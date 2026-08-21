@@ -30,7 +30,7 @@ export function RoomContainer({ token, wsUrl, onLeave }: RoomContainerProps) {
           publishDefaults: {
             simulcast: false,   // Garante transmissão de 1080p Full HD pura sem downscaling
             screenShareEncoding: {
-              maxBitrate: 6_000_000, // 6 Mbps de bitrate para Full HD 1080p 60 FPS
+              maxBitrate: 10_000_000, // 10 Mbps de bitrate para qualidade Full HD 1080p 60 FPS nativa de jogos
               maxFramerate: 60,
             },
           },
