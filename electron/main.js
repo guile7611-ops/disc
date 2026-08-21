@@ -1,13 +1,14 @@
 const { app, BrowserWindow, session, desktopCapturer, ipcMain } = require('electron');
 const path = require('path');
 
-// Flags estritas do Chromium para forçar captura DXGI/GDI e eliminar a borda amarela no Windows 10/11
+// Desativa estritamente todas as APIs WGC de janela/tela do Windows para forçar a captura GDI/DXGI limpa (sem borda amarela)
 app.commandLine.appendSwitch(
   'disable-features',
-  'WinGraphicsCapture,WinGraphicsCaptureWindow,WinGraphicsCaptureScreen,WebRtcAllowWgcScreenCapturer,WebRtcAllowWgcWindowCapturer,WebRtcAllowWgcDesktopCapturer,MediaFoundationD3D11VideoCapture'
+  'WinGraphicsCapture,WinGraphicsCaptureWindow,WinGraphicsCaptureScreen,WebRtcAllowWgcScreenCapturer,WebRtcAllowWgcWindowCapturer,WebRtcAllowWgcDesktopCapturer,AllowWgcDesktopCapturer,MediaFoundationD3D11VideoCapture'
 );
 app.commandLine.appendSwitch('enable-features', 'WebRtcAllowDxgiGdiCapturer,CanvasOopRasterization,UseSkiaRenderer');
 app.commandLine.appendSwitch('disable-wgc-capturer');
+app.commandLine.appendSwitch('disable-wgc-window-capturer');
 
 // Flags de Desempenho do Chromium para Inicialização Instantânea e 60 FPS
 app.commandLine.appendSwitch('high-dpi-support', '1');
