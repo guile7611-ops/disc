@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { useRoomContext } from '@livekit/components-react';
+import { useRoomContext, useChat } from '@livekit/components-react';
 import { RoomEvent } from 'livekit-client';
 import { MessageSquare, Send, X, Image as ImageIcon, ExternalLink } from 'lucide-react';
 
@@ -22,10 +22,12 @@ interface ChatPanelProps {
 
 const STORAGE_KEY = 'sala_principal_chat_v1';
 const EXPIRE_TIME_MS = 3 * 60 * 1000; // 3 minutos
-const CHUNK_SIZE = 10000; // 10 KB por pacote WebRTC (garante 100% de entrega)
+const CHUNK_SIZE = 10000; // 10 KB por pacote
 
 export function ChatPanel({ isOpen, onClose, onNewMessage }: ChatPanelProps) {
   const room = useRoomContext();
+  const { chatMessages: livekitChatMessages, send: sendLiveKitChat } = useChat();
+
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -36,7 +38,7 @@ export function ChatPanel({ isOpen, onClose, onNewMessage }: ChatPanelProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const incomingChunksRef = useRef<Record<string, { total: number; chunks: string[] }>>({});
 
-  // Carrega mensagens do localStorage e remove as com mais de 3 minutos
+  // Carrega mensagens salvas e limpa as com mais de 3 minutos
   const loadAndCleanMessages = useCallback(() => {
     if (typeof window === 'undefined') return;
 
@@ -73,7 +75,7 @@ export function ChatPanel({ isOpen, onClose, onNewMessage }: ChatPanelProps) {
     loadAndCleanMessages();
     const interval = setInterval(() => {
       loadAndCleanMessages();
-    }, 10000);
+    }, 5000); // Limpeza a cada 5s
 
     return () => clearInterval(interval);
   }, [loadAndCleanMessages]);
@@ -84,7 +86,45 @@ export function ChatPanel({ isOpen, onClose, onNewMessage }: ChatPanelProps) {
     }
   }, [messages, isOpen]);
 
-  // Escuta pacotes recebidos via LiveKit DataChannel
+  // Sincroniza mensagens nativas do hook useChat() do LiveKit
+  useEffect(() => {
+    if (!livekitChatMessages || livekitChatMessages.length === 0) return;
+
+    setMessages((prev) => {
+      let updated = [...prev];
+      let changed = false;
+
+      livekitChatMessages.forEach((lkMsg) => {
+        const senderName = lkMsg.from?.name || lkMsg.from?.identity || 'Participante';
+        const senderId = lkMsg.from?.identity || 'desconhecido';
+        const msgId = lkMsg.id || `${lkMsg.timestamp}-${senderId}`;
+
+        if (!updated.some((m) => m.id === msgId)) {
+          updated.push({
+            id: msgId,
+            senderName,
+            senderId,
+            text: lkMsg.message,
+            timestamp: lkMsg.timestamp,
+          });
+          changed = true;
+        }
+      });
+
+      if (changed) {
+        const now = Date.now();
+        updated = updated.filter((m) => now - m.timestamp < EXPIRE_TIME_MS);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+        }
+        if (onNewMessage) onNewMessage();
+        return updated;
+      }
+      return prev;
+    });
+  }, [livekitChatMessages, onNewMessage]);
+
+  // Escuta dados recebidos via LiveKit DataChannel (Sem bloqueio rígido de tópico)
   useEffect(() => {
     if (!room) return;
 
@@ -107,22 +147,35 @@ export function ChatPanel({ isOpen, onClose, onNewMessage }: ChatPanelProps) {
 
     const handleDataReceived = (
       payload: Uint8Array,
-      _participant?: unknown,
-      _kind?: unknown,
-      topic?: string
+      participant?: { identity: string; name?: string }
     ) => {
-      if (topic !== 'chat' && topic !== 'chat_chunk') return;
-
       try {
         const decoder = new TextDecoder();
         const strData = decoder.decode(payload);
 
-        if (topic === 'chat') {
-          const incomingMsg: ChatMessage = JSON.parse(strData);
-          addMessageToState(incomingMsg);
-        } else if (topic === 'chat_chunk') {
-          const chunkPacket = JSON.parse(strData); // { chunkId, index, total, chunkData }
-          const { chunkId, index, total, chunkData } = chunkPacket;
+        // Tenta fazer parse do JSON recebido
+        let parsedData;
+        try {
+          parsedData = JSON.parse(strData);
+        } catch {
+          // Se for texto puro (não JSON)
+          if (strData && typeof strData === 'string') {
+            const senderName = participant?.name || participant?.identity || 'Participante';
+            const senderId = participant?.identity || 'outros';
+            addMessageToState({
+              id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+              senderName,
+              senderId,
+              text: strData,
+              timestamp: Date.now(),
+            });
+          }
+          return;
+        }
+
+        // Se for pacote fragmentado (chunking de fotos)
+        if (parsedData && parsedData.chunkId && parsedData.chunkData) {
+          const { chunkId, index, total, chunkData } = parsedData;
 
           if (!incomingChunksRef.current[chunkId]) {
             incomingChunksRef.current[chunkId] = { total, chunks: new Array(total).fill('') };
@@ -130,7 +183,6 @@ export function ChatPanel({ isOpen, onClose, onNewMessage }: ChatPanelProps) {
 
           incomingChunksRef.current[chunkId].chunks[index] = chunkData;
 
-          // Verifica se todos os fragmentos chegaram
           const allArrived = incomingChunksRef.current[chunkId].chunks.every((c) => c !== '');
           if (allArrived) {
             const fullJsonStr = incomingChunksRef.current[chunkId].chunks.join('');
@@ -139,9 +191,27 @@ export function ChatPanel({ isOpen, onClose, onNewMessage }: ChatPanelProps) {
             const incomingMsg: ChatMessage = JSON.parse(fullJsonStr);
             addMessageToState(incomingMsg);
           }
+          return;
+        }
+
+        // Se for mensagem formatada normal { text, imageUrl, ... }
+        if (parsedData && (parsedData.text !== undefined || parsedData.imageUrl || parsedData.id)) {
+          const senderName = parsedData.senderName || participant?.name || participant?.identity || 'Participante';
+          const senderId = parsedData.senderId || participant?.identity || 'outros';
+
+          const formattedMsg: ChatMessage = {
+            id: parsedData.id || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            senderName,
+            senderId,
+            text: parsedData.text || '',
+            imageUrl: parsedData.imageUrl,
+            timestamp: parsedData.timestamp || Date.now(),
+          };
+
+          addMessageToState(formattedMsg);
         }
       } catch (err) {
-        console.error('Erro ao processar pacote do chat:', err);
+        console.error('Erro ao processar mensagem do DataChannel:', err);
       }
     };
 
@@ -152,7 +222,7 @@ export function ChatPanel({ isOpen, onClose, onNewMessage }: ChatPanelProps) {
     };
   }, [room, onNewMessage]);
 
-  // Processa e compacta imagem para Base64 ultra leve (max 400px, JPEG 0.6)
+  // Processa e compacta imagem para Base64 leve (max 400px)
   const handleImageFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -167,8 +237,8 @@ export function ChatPanel({ isOpen, onClose, onNewMessage }: ChatPanelProps) {
       const img = new Image();
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 450;
-        const MAX_HEIGHT = 450;
+        const MAX_WIDTH = 400;
+        const MAX_HEIGHT = 400;
         let width = img.width;
         let height = img.height;
 
@@ -207,21 +277,27 @@ export function ChatPanel({ isOpen, onClose, onNewMessage }: ChatPanelProps) {
     const localParticipant = room.localParticipant;
     const senderName = localParticipant.name || localParticipant.identity || 'Eu';
     const senderId = localParticipant.identity;
+    const textToSend = inputText.trim();
 
     const newMsg: ChatMessage = {
       id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       senderName,
       senderId,
-      text: inputText.trim(),
+      text: textToSend,
       imageUrl: selectedImage || undefined,
       timestamp: Date.now(),
     };
 
     try {
+      // 1. Envia via LiveKit useChat() nativo para compatibilidade total se não tiver imagem
+      if (textToSend && !selectedImage && sendLiveKitChat) {
+        sendLiveKitChat(textToSend).catch(() => {});
+      }
+
+      // 2. Envia via DataChannel para garatia de imagens e dados ricos
       const fullJsonStr = JSON.stringify(newMsg);
       const encoder = new TextEncoder();
 
-      // Se a mensagem cabe num único pacote WebRTC (< 10 KB)
       if (fullJsonStr.length <= CHUNK_SIZE) {
         const payload = encoder.encode(fullJsonStr);
         await localParticipant.publishData(payload, {
@@ -229,7 +305,6 @@ export function ChatPanel({ isOpen, onClose, onNewMessage }: ChatPanelProps) {
           reliable: true,
         });
       } else {
-        // Se a mensagem contém imagem grande, fragmenta em pacotes de 10 KB e transmite
         const chunkId = newMsg.id;
         const totalChunks = Math.ceil(fullJsonStr.length / CHUNK_SIZE);
 
@@ -259,8 +334,7 @@ export function ChatPanel({ isOpen, onClose, onNewMessage }: ChatPanelProps) {
       setSelectedImage(null);
       scrollToBottom();
     } catch (err) {
-      console.error('Erro ao enviar mensagem no DataChannel:', err);
-      alert('Erro ao enviar imagem. Tente novamente com uma imagem menor.');
+      console.error('Erro ao enviar mensagem:', err);
     } finally {
       setIsSending(false);
     }
