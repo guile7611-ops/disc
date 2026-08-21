@@ -4,7 +4,7 @@ const path = require('path');
 // Desativa os experimentos do Chromium para garantir o bloqueio da API WGC
 app.commandLine.appendSwitch('disable-field-trial-config');
 
-// Flags estritas do Chromium para forçar suporte total a GDI/DXGI e usermedia
+// Flags estritas do Chromium para forçar suporte total a GDI/DXGI e usermedia sem borda
 app.commandLine.appendSwitch(
   'disable-features',
   'WinGraphicsCapture,WinGraphicsCaptureWindow,WinGraphicsCaptureScreen,WebRtcAllowWgcScreenCapturer,WebRtcAllowWgcWindowCapturer,WebRtcAllowWgcDesktopCapturer,AllowWgcDesktopCapturer,MediaFoundationD3D11VideoCapture,WgcDesktopCapturer,WgcWindowCapturer'
@@ -13,12 +13,11 @@ app.commandLine.appendSwitch('enable-features', 'WebRtcAllowDxgiGdiCapturer,Canv
 app.commandLine.appendSwitch('disable-wgc-capturer');
 app.commandLine.appendSwitch('disable-wgc-window-capturer');
 
-// Flags de Desempenho do Chromium para 60 FPS e inicialização fluida
+// Flags de Desempenho do Chromium para 60 FPS (sem zero-copy para eliminar a barra verde YUV no rodapé)
 app.commandLine.appendSwitch('high-dpi-support', '1');
 app.commandLine.appendSwitch('force-device-scale-factor', '1');
 app.commandLine.appendSwitch('enable-usermedia-screen-capturing');
 app.commandLine.appendSwitch('enable-gpu-rasterization');
-app.commandLine.appendSwitch('enable-zero-copy');
 
 let mainWindow;
 let pickerWindow = null;

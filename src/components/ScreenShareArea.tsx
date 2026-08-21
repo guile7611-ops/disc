@@ -108,11 +108,11 @@ export function ScreenShareArea() {
           </>
         )}
 
-        {/* Vídeo em Foco 100% limpo quando em Tela Cheia (sem qualquer overlay/botão) */}
-        <div className="w-full h-full flex items-center justify-center p-0 outline-none border-none ring-0 bg-black">
+        {/* Vídeo em Foco 100% limpo com corte de bordas YUV */}
+        <div className="w-full h-full flex items-center justify-center p-0 outline-none border-none ring-0 bg-black overflow-hidden relative">
           <VideoTrack
             trackRef={focusedTrack}
-            className="w-full h-full object-contain max-h-full max-w-full outline-none border-none ring-0 shadow-none"
+            className="w-full h-full object-contain max-h-full max-w-full outline-none border-none ring-0 shadow-none overflow-hidden scale-[1.002]"
           />
         </div>
       </div>
@@ -183,11 +183,13 @@ export function ScreenShareArea() {
                 </>
               )}
 
-              {/* Reprodução do Vídeo da Tela */}
-              <VideoTrack
-                trackRef={trackRef}
-                className="w-full h-full object-contain max-h-full outline-none border-none ring-0 shadow-none"
-              />
+              {/* Reprodução do Vídeo da Tela com recorte limpo de bordas */}
+              <div className="w-full h-full flex items-center justify-center bg-black overflow-hidden relative">
+                <VideoTrack
+                  trackRef={trackRef}
+                  className="w-full h-full object-contain max-h-full outline-none border-none ring-0 shadow-none overflow-hidden scale-[1.002]"
+                />
+              </div>
             </div>
           );
         })}
