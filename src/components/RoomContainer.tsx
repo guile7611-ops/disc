@@ -28,9 +28,9 @@ export function RoomContainer({ token, wsUrl, onLeave }: RoomContainerProps) {
           adaptiveStream: true, // Reduz uso de RAM/GPU em faixas não visíveis
           dynacast: true,       // Otimiza decodificação WebRTC dinamicamente
           publishDefaults: {
-            simulcast: false,   // Garante que o compartilhamento de tela não seja reduzido (Full HD 1080p puro)
+            simulcast: false,   // Garante transmissão de 1080p Full HD pura sem downscaling
             screenShareEncoding: {
-              maxBitrate: 6_000_000, // 6 Mbps de taxa de bits para cristalina qualidade Full HD (1920x1080)
+              maxBitrate: 6_000_000, // 6 Mbps de bitrate para Full HD 1080p 60 FPS
               maxFramerate: 60,
             },
           },
