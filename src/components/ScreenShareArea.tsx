@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useTracks, VideoTrack } from '@livekit/components-react';
 import { Track } from 'livekit-client';
-import { Monitor, Grid, Maximize, Maximize2, Minimize, Radio, User } from 'lucide-react';
+import { Monitor, Grid, Maximize, Maximize2, Radio, User } from 'lucide-react';
 
 export function ScreenShareArea() {
   const screenShareTracks = useTracks([Track.Source.ScreenShare]);
@@ -16,9 +16,17 @@ export function ScreenShareArea() {
       setIsFullscreen(!!document.fullscreenElement);
     };
 
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {});
+      }
+    };
+
     document.addEventListener('fullscreenchange', handleFullscreenChange);
+    window.addEventListener('keydown', handleKeyDown);
     return () => {
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      window.removeEventListener('keydown', handleKeyDown);
     };
   }, []);
 
@@ -65,46 +73,42 @@ export function ScreenShareArea() {
         ref={containerRef}
         className="flex-1 bg-black flex flex-col relative overflow-hidden outline-none border-none ring-0 select-none"
       >
-        {/* Banner Superior no Modo Foco */}
-        <div className="absolute top-4 left-4 z-20 bg-[#1e1f22]/90 backdrop-blur-md border border-[#2b2d31] px-4 py-2 rounded-lg flex items-center gap-3 shadow-xl">
-          <span className="px-2 py-0.5 rounded bg-[#f23f43] text-white font-bold text-[10px] uppercase tracking-wider flex items-center gap-1">
-            <Radio className="w-3 h-3 animate-pulse" />
-            AO VIVO 60 FPS
-          </span>
-          <div className="flex items-center gap-1.5 text-xs text-[#dbdee1]">
-            <User className="w-4 h-4 text-[#5865F2]" />
-            <span>Tela de <strong className="font-bold text-white">{participantName}</strong></span>
-          </div>
+        {/* Exibe o banner e o botão APENAS quando NÃO estiver em tela cheia */}
+        {!isFullscreen && (
+          <>
+            {/* Banner Superior no Modo Foco */}
+            <div className="absolute top-4 left-4 z-20 bg-[#1e1f22]/90 backdrop-blur-md border border-[#2b2d31] px-4 py-2 rounded-lg flex items-center gap-3 shadow-xl">
+              <span className="px-2 py-0.5 rounded bg-[#f23f43] text-white font-bold text-[10px] uppercase tracking-wider flex items-center gap-1">
+                <Radio className="w-3 h-3 animate-pulse" />
+                AO VIVO 60 FPS
+              </span>
+              <div className="flex items-center gap-1.5 text-xs text-[#dbdee1]">
+                <User className="w-4 h-4 text-[#5865F2]" />
+                <span>Tela de <strong className="font-bold text-white">{participantName}</strong></span>
+              </div>
 
-          <button
-            onClick={() => setFocusedTrackSid(null)}
-            className="ml-3 px-2.5 py-1 rounded bg-[#313338] hover:bg-[#3b3e45] text-xs font-semibold text-[#dbdee1] flex items-center gap-1 transition-colors cursor-pointer"
-          >
-            <Grid className="w-3.5 h-3.5" />
-            <span>Ver todas ({screenShareTracks.length})</span>
-          </button>
-        </div>
+              <button
+                onClick={() => setFocusedTrackSid(null)}
+                className="ml-3 px-2.5 py-1 rounded bg-[#313338] hover:bg-[#3b3e45] text-xs font-semibold text-[#dbdee1] flex items-center gap-1 transition-colors cursor-pointer"
+              >
+                <Grid className="w-3.5 h-3.5" />
+                <span>Ver todas ({screenShareTracks.length})</span>
+              </button>
+            </div>
 
-        {/* Botão de Tela Cheia Nativo (Fullscreen) */}
-        <button
-          onClick={toggleFullscreen}
-          className="absolute top-4 right-4 z-20 p-2.5 rounded-lg bg-[#1e1f22]/90 hover:bg-[#5865F2] text-white border border-[#2b2d31] transition-all cursor-pointer shadow-xl flex items-center gap-1.5 text-xs font-bold"
-          title={isFullscreen ? 'Sair da tela cheia' : 'Tela cheia'}
-        >
-          {isFullscreen ? (
-            <>
-              <Minimize className="w-4 h-4" />
-              <span className="hidden sm:inline">Sair da Tela Cheia</span>
-            </>
-          ) : (
-            <>
+            {/* Botão de Entrar em Tela Cheia */}
+            <button
+              onClick={toggleFullscreen}
+              className="absolute top-4 right-4 z-20 p-2.5 rounded-lg bg-[#1e1f22]/90 hover:bg-[#5865F2] text-white border border-[#2b2d31] transition-all cursor-pointer shadow-xl flex items-center gap-1.5 text-xs font-bold"
+              title="Entrar em Tela Cheia"
+            >
               <Maximize className="w-4 h-4" />
               <span className="hidden sm:inline">Tela Cheia</span>
-            </>
-          )}
-        </button>
+            </button>
+          </>
+        )}
 
-        {/* Vídeo em Foco sem qualquer borda ou barra amarela */}
+        {/* Vídeo em Foco 100% limpo quando em Tela Cheia (sem qualquer overlay/botão) */}
         <div className="w-full h-full flex items-center justify-center p-0 outline-none border-none ring-0 bg-black">
           <VideoTrack
             trackRef={focusedTrack}
@@ -128,24 +132,26 @@ export function ScreenShareArea() {
       ref={containerRef}
       className="flex-1 bg-[#1e1f22] p-3 flex flex-col relative overflow-hidden outline-none border-none ring-0 select-none"
     >
-      {/* Barra Superior da Grade */}
-      <div className="mb-3 px-3 py-2 bg-[#2b2d31] rounded-lg border border-[#313338] flex items-center justify-between z-10">
-        <span className="text-xs font-bold text-[#dbdee1] flex items-center gap-2">
-          <span className="w-2.5 h-2.5 rounded-full bg-[#f23f43] animate-pulse" />
-          {screenShareTracks.length} Transmissões ao vivo simultâneas (60 FPS)
-        </span>
+      {/* Barra Superior da Grade (Oculta se estiver em Tela Cheia) */}
+      {!isFullscreen && (
+        <div className="mb-3 px-3 py-2 bg-[#2b2d31] rounded-lg border border-[#313338] flex items-center justify-between z-10">
+          <span className="text-xs font-bold text-[#dbdee1] flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#f23f43] animate-pulse" />
+            {screenShareTracks.length} Transmissões ao vivo simultâneas (60 FPS)
+          </span>
 
-        <button
-          onClick={toggleFullscreen}
-          className="px-2.5 py-1 rounded bg-[#313338] hover:bg-[#3b3e45] text-white text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-[#3f4248]"
-          title="Modo Tela Cheia"
-        >
-          {isFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
-          <span>{isFullscreen ? 'Sair da Tela Cheia' : 'Tela Cheia'}</span>
-        </button>
-      </div>
+          <button
+            onClick={toggleFullscreen}
+            className="px-2.5 py-1 rounded bg-[#313338] hover:bg-[#3b3e45] text-white text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-[#3f4248]"
+            title="Modo Tela Cheia"
+          >
+            <Maximize className="w-3.5 h-3.5" />
+            <span>Tela Cheia</span>
+          </button>
+        </div>
+      )}
 
-      {/* Grade de Telas Simultâneas sem bordas amarelas */}
+      {/* Grade de Telas Simultâneas */}
       <div className={`flex-1 grid ${gridColsClass} gap-3 h-full overflow-y-auto`}>
         {screenShareTracks.map((trackRef) => {
           const participantName = trackRef.participant?.name || 'Participante';
@@ -156,25 +162,28 @@ export function ScreenShareArea() {
               key={trackSid}
               className="relative group bg-black border border-[#2b2d31] hover:border-[#5865F2] rounded-xl overflow-hidden flex items-center justify-center transition-all shadow-xl min-h-48 outline-none ring-0"
             >
-              {/* Overlay do Participante */}
-              <div className="absolute top-3 left-3 z-20 bg-[#1e1f22]/90 backdrop-blur-md border border-[#2b2d31] px-3 py-1.5 rounded-md flex items-center gap-2 text-xs">
-                <span className="w-2 h-2 rounded-full bg-[#f23f43] animate-pulse" />
-                <span className="font-semibold text-white truncate max-w-40">{participantName}</span>
-                <span className="px-1.5 py-0.2 rounded bg-[#5865F2]/20 text-[#5865F2] text-[10px] font-bold">
-                  60 FPS
-                </span>
-              </div>
+              {/* Overlay do Participante (Escondido em Tela Cheia) */}
+              {!isFullscreen && (
+                <>
+                  <div className="absolute top-3 left-3 z-20 bg-[#1e1f22]/90 backdrop-blur-md border border-[#2b2d31] px-3 py-1.5 rounded-md flex items-center gap-2 text-xs">
+                    <span className="w-2 h-2 rounded-full bg-[#f23f43] animate-pulse" />
+                    <span className="font-semibold text-white truncate max-w-40">{participantName}</span>
+                    <span className="px-1.5 py-0.2 rounded bg-[#5865F2]/20 text-[#5865F2] text-[10px] font-bold">
+                      60 FPS
+                    </span>
+                  </div>
 
-              {/* Botão Expandir Foco */}
-              <button
-                onClick={() => setFocusedTrackSid(trackRef.publication?.trackSid || null)}
-                className="absolute top-3 right-3 z-20 p-2 rounded-md bg-[#1e1f22]/80 hover:bg-[#5865F2] text-white opacity-0 group-hover:opacity-100 transition-all cursor-pointer shadow-lg"
-                title="Expandir tela em foco"
-              >
-                <Maximize2 className="w-4 h-4" />
-              </button>
+                  <button
+                    onClick={() => setFocusedTrackSid(trackRef.publication?.trackSid || null)}
+                    className="absolute top-3 right-3 z-20 p-2 rounded-md bg-[#1e1f22]/80 hover:bg-[#5865F2] text-white opacity-0 group-hover:opacity-100 transition-all cursor-pointer shadow-lg"
+                    title="Expandir tela em foco"
+                  >
+                    <Maximize2 className="w-4 h-4" />
+                  </button>
+                </>
+              )}
 
-              {/* Reprodução do Vídeo da Tela sem borda amarela */}
+              {/* Reprodução do Vídeo da Tela */}
               <VideoTrack
                 trackRef={trackRef}
                 className="w-full h-full object-contain max-h-full outline-none border-none ring-0 shadow-none"
