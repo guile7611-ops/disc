@@ -1,12 +1,13 @@
 const { app, BrowserWindow, session, desktopCapturer, ipcMain } = require('electron');
 const path = require('path');
 
-// Flags de Desempenho e Eliminação Definitiva da Borda Amarela do Windows (Chromium 120+)
+// Flags estritas do Chromium para forçar captura DXGI/GDI e eliminar a borda amarela no Windows 10/11
 app.commandLine.appendSwitch(
   'disable-features',
-  'WinGraphicsCapture,WinGraphicsCaptureWindow,WinGraphicsCaptureScreen,WebRtcAllowWgcScreenCapturer,WebRtcAllowWgcWindowCapturer,MediaFoundationD3D11VideoCapture'
+  'WinGraphicsCapture,WinGraphicsCaptureWindow,WinGraphicsCaptureScreen,WebRtcAllowWgcScreenCapturer,WebRtcAllowWgcWindowCapturer,WebRtcAllowWgcDesktopCapturer,MediaFoundationD3D11VideoCapture'
 );
 app.commandLine.appendSwitch('enable-features', 'WebRtcAllowDxgiGdiCapturer,CanvasOopRasterization,UseSkiaRenderer');
+app.commandLine.appendSwitch('disable-wgc-capturer');
 
 // Flags de Desempenho do Chromium para Inicialização Instantânea e 60 FPS
 app.commandLine.appendSwitch('high-dpi-support', '1');
@@ -29,7 +30,7 @@ function createWindow() {
     icon: path.join(__dirname, '../build/icon.ico'),
     autoHideMenuBar: true,
     backgroundColor: '#1e1f22',
-    show: false, // Oculta até que a janela esteja pronta para evitar tela branca/atraso
+    show: false,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -38,7 +39,6 @@ function createWindow() {
     },
   });
 
-  // Exibe a janela assim que o conteúdo inicial estiver pronto (resposta instantânea)
   mainWindow.once('ready-to-show', () => {
     if (mainWindow) {
       mainWindow.show();
