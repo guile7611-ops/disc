@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useRoomContext } from '@livekit/components-react';
 import { RoomEvent } from 'livekit-client';
-import { MessageSquare, Send, X, Image as ImageIcon, Link as LinkIcon, ExternalLink } from 'lucide-react';
+import { MessageSquare, Send, X, Image as ImageIcon, ExternalLink } from 'lucide-react';
 
 export interface ChatMessage {
   id: string;
@@ -22,6 +22,7 @@ interface ChatPanelProps {
 
 const STORAGE_KEY = 'sala_principal_chat_v1';
 const EXPIRE_TIME_MS = 3 * 60 * 1000; // 3 minutos
+const CHUNK_SIZE = 10000; // 10 KB por pacote WebRTC (garante 100% de entrega)
 
 export function ChatPanel({ isOpen, onClose, onNewMessage }: ChatPanelProps) {
   const room = useRoomContext();
@@ -33,8 +34,9 @@ export function ChatPanel({ isOpen, onClose, onNewMessage }: ChatPanelProps) {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const incomingChunksRef = useRef<Record<string, { total: number; chunks: string[] }>>({});
 
-  // Carrega mensagens do localStorage e filtra as que tem menos de 3 minutos
+  // Carrega mensagens do localStorage e remove as com mais de 3 minutos
   const loadAndCleanMessages = useCallback(() => {
     if (typeof window === 'undefined') return;
 
@@ -69,8 +71,6 @@ export function ChatPanel({ isOpen, onClose, onNewMessage }: ChatPanelProps) {
 
   useEffect(() => {
     loadAndCleanMessages();
-
-    // Limpa automaticamente mensagens mais velhas que 3 minutos a cada 10 segundos
     const interval = setInterval(() => {
       loadAndCleanMessages();
     }, 10000);
@@ -84,40 +84,64 @@ export function ChatPanel({ isOpen, onClose, onNewMessage }: ChatPanelProps) {
     }
   }, [messages, isOpen]);
 
-  // Escuta dados recebidos via LiveKit DataChannel (confiável, tópico 'chat')
+  // Escuta pacotes recebidos via LiveKit DataChannel
   useEffect(() => {
     if (!room) return;
 
+    const addMessageToState = (incomingMsg: ChatMessage) => {
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === incomingMsg.id)) return prev;
+
+        const now = Date.now();
+        const updated = [...prev, incomingMsg].filter((m) => now - m.timestamp < EXPIRE_TIME_MS);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+        }
+        return updated;
+      });
+
+      if (onNewMessage) {
+        onNewMessage();
+      }
+    };
+
     const handleDataReceived = (
       payload: Uint8Array,
-      participant?: { identity: string; name?: string },
+      _participant?: unknown,
       _kind?: unknown,
       topic?: string
     ) => {
-      if (topic !== 'chat') return;
+      if (topic !== 'chat' && topic !== 'chat_chunk') return;
 
       try {
         const decoder = new TextDecoder();
         const strData = decoder.decode(payload);
-        const incomingMsg: ChatMessage = JSON.parse(strData);
 
-        setMessages((prev) => {
-          // Evita mensagens duplicadas
-          if (prev.some((m) => m.id === incomingMsg.id)) return prev;
+        if (topic === 'chat') {
+          const incomingMsg: ChatMessage = JSON.parse(strData);
+          addMessageToState(incomingMsg);
+        } else if (topic === 'chat_chunk') {
+          const chunkPacket = JSON.parse(strData); // { chunkId, index, total, chunkData }
+          const { chunkId, index, total, chunkData } = chunkPacket;
 
-          const now = Date.now();
-          const updated = [...prev, incomingMsg].filter((m) => now - m.timestamp < EXPIRE_TIME_MS);
-          if (typeof window !== 'undefined') {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+          if (!incomingChunksRef.current[chunkId]) {
+            incomingChunksRef.current[chunkId] = { total, chunks: new Array(total).fill('') };
           }
-          return updated;
-        });
 
-        if (onNewMessage) {
-          onNewMessage();
+          incomingChunksRef.current[chunkId].chunks[index] = chunkData;
+
+          // Verifica se todos os fragmentos chegaram
+          const allArrived = incomingChunksRef.current[chunkId].chunks.every((c) => c !== '');
+          if (allArrived) {
+            const fullJsonStr = incomingChunksRef.current[chunkId].chunks.join('');
+            delete incomingChunksRef.current[chunkId];
+
+            const incomingMsg: ChatMessage = JSON.parse(fullJsonStr);
+            addMessageToState(incomingMsg);
+          }
         }
       } catch (err) {
-        console.error('Erro ao processar mensagem do chat:', err);
+        console.error('Erro ao processar pacote do chat:', err);
       }
     };
 
@@ -128,7 +152,7 @@ export function ChatPanel({ isOpen, onClose, onNewMessage }: ChatPanelProps) {
     };
   }, [room, onNewMessage]);
 
-  // Processa e compacta imagem para Base64 leve (max 800px)
+  // Processa e compacta imagem para Base64 ultra leve (max 400px, JPEG 0.6)
   const handleImageFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -143,8 +167,8 @@ export function ChatPanel({ isOpen, onClose, onNewMessage }: ChatPanelProps) {
       const img = new Image();
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 800;
-        const MAX_HEIGHT = 800;
+        const MAX_WIDTH = 450;
+        const MAX_HEIGHT = 450;
         let width = img.width;
         let height = img.height;
 
@@ -165,7 +189,7 @@ export function ChatPanel({ isOpen, onClose, onNewMessage }: ChatPanelProps) {
         const ctx = canvas.getContext('2d');
         ctx?.drawImage(img, 0, 0, width, height);
 
-        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
+        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.6);
         setSelectedImage(compressedBase64);
       };
       img.src = evt.target?.result as string;
@@ -194,14 +218,37 @@ export function ChatPanel({ isOpen, onClose, onNewMessage }: ChatPanelProps) {
     };
 
     try {
+      const fullJsonStr = JSON.stringify(newMsg);
       const encoder = new TextEncoder();
-      const payload = encoder.encode(JSON.stringify(newMsg));
 
-      // Publica no LiveKit Data Channel confiável (reliable: true)
-      await localParticipant.publishData(payload, {
-        topic: 'chat',
-        reliable: true,
-      });
+      // Se a mensagem cabe num único pacote WebRTC (< 10 KB)
+      if (fullJsonStr.length <= CHUNK_SIZE) {
+        const payload = encoder.encode(fullJsonStr);
+        await localParticipant.publishData(payload, {
+          topic: 'chat',
+          reliable: true,
+        });
+      } else {
+        // Se a mensagem contém imagem grande, fragmenta em pacotes de 10 KB e transmite
+        const chunkId = newMsg.id;
+        const totalChunks = Math.ceil(fullJsonStr.length / CHUNK_SIZE);
+
+        for (let i = 0; i < totalChunks; i++) {
+          const chunkData = fullJsonStr.substr(i * CHUNK_SIZE, CHUNK_SIZE);
+          const packet = JSON.stringify({
+            chunkId,
+            index: i,
+            total: totalChunks,
+            chunkData,
+          });
+
+          const payload = encoder.encode(packet);
+          await localParticipant.publishData(payload, {
+            topic: 'chat_chunk',
+            reliable: true,
+          });
+        }
+      }
 
       // Adiciona localmente e salva no localStorage
       const now = Date.now();
@@ -213,12 +260,13 @@ export function ChatPanel({ isOpen, onClose, onNewMessage }: ChatPanelProps) {
       scrollToBottom();
     } catch (err) {
       console.error('Erro ao enviar mensagem no DataChannel:', err);
+      alert('Erro ao enviar imagem. Tente novamente com uma imagem menor.');
     } finally {
       setIsSending(false);
     }
   };
 
-  // Parser de texto para transformar URLs em links clicáveis
+  // Formata URLs em links clicáveis
   const renderFormattedText = (text: string) => {
     const urlRegex = /(https?:\/\/[^\s]+)/g;
     const parts = text.split(urlRegex);
@@ -332,7 +380,7 @@ export function ChatPanel({ isOpen, onClose, onNewMessage }: ChatPanelProps) {
         <div className="p-2 bg-[#1e1f22] border-t border-[#313338] flex items-center justify-between">
           <div className="flex items-center gap-2">
             <img src={selectedImage} alt="Preview" className="w-10 h-10 object-cover rounded border border-[#5865F2]" />
-            <span className="text-xs text-[#dbdee1] font-semibold">Imagem anexada</span>
+            <span className="text-xs text-[#dbdee1] font-semibold">Imagem pronta para envio</span>
           </div>
           <button
             onClick={() => setSelectedImage(null)}
