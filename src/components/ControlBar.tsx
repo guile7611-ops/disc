@@ -1,28 +1,54 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { useLocalParticipant, useRoomContext } from '@livekit/components-react';
-import { Track, LocalVideoTrack } from 'livekit-client';
+import { useLocalParticipant, useRoomContext, useChat } from '@livekit/components-react';
+import { Track } from 'livekit-client';
 import { useScreenShareSupport } from '@/hooks/useScreenShareSupport';
 import { useMicrophones } from '@/hooks/useMicrophones';
-import { Mic, MicOff, Monitor, MonitorOff, PhoneOff, Loader2, Volume2, ChevronUp, Check, Settings } from 'lucide-react';
+import {
+  Mic,
+  MicOff,
+  Monitor,
+  MonitorOff,
+  PhoneOff,
+  Loader2,
+  Volume2,
+  ChevronUp,
+  Check,
+  Settings,
+  MessageSquare,
+} from 'lucide-react';
 
 interface ControlBarProps {
   onLeave: () => void;
+  isChatOpen: boolean;
+  onToggleChat: () => void;
 }
 
-export function ControlBar({ onLeave }: ControlBarProps) {
+export function ControlBar({ onLeave, isChatOpen, onToggleChat }: ControlBarProps) {
   const room = useRoomContext();
   const { localParticipant, isMicrophoneEnabled, isScreenShareEnabled } = useLocalParticipant();
   const isScreenShareSupported = useScreenShareSupport();
   const { devices, selectedDeviceId, setSelectedDeviceId, refreshDevices } = useMicrophones();
+  const { chatMessages } = useChat();
 
   const [isMicLoading, setIsMicLoading] = useState(false);
   const [isScreenLoading, setIsScreenLoading] = useState(false);
   const [showMicMenu, setShowMicMenu] = useState(false);
-  const customTrackRef = useRef<LocalVideoTrack | null>(null);
+  const [unreadCount, setUnreadCount] = useState(0);
 
+  const lastSeenMsgCountRef = useRef(chatMessages.length);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Contador de mensagens não lidas no Chat
+  useEffect(() => {
+    if (isChatOpen) {
+      setUnreadCount(0);
+      lastSeenMsgCountRef.current = chatMessages.length;
+    } else if (chatMessages.length > lastSeenMsgCountRef.current) {
+      setUnreadCount(chatMessages.length - lastSeenMsgCountRef.current);
+    }
+  }, [chatMessages.length, isChatOpen]);
 
   const toggleMicrophone = async () => {
     if (!localParticipant || isMicLoading) return;
@@ -59,94 +85,49 @@ export function ControlBar({ onLeave }: ControlBarProps) {
     setIsScreenLoading(true);
 
     try {
-      // Se estiver no aplicativo Desktop Electron, usa a captura nativa GDI/DXGI sem borda amarela
-      if (typeof window !== 'undefined' && window.electronAPI?.isElectron) {
-        if (isScreenShareEnabled || customTrackRef.current) {
-          // Parar transmissão de tela atual
-          if (customTrackRef.current) {
-            await localParticipant.unpublishTrack(customTrackRef.current);
-            customTrackRef.current.stop();
-            customTrackRef.current = null;
+      const nextState = !isScreenShareEnabled;
+      await localParticipant.setScreenShareEnabled(nextState, {
+        audio: true,
+        resolution: {
+          width: 1920,
+          height: 1080,
+          frameRate: 60,
+        },
+        contentHint: 'motion',
+      });
+
+      // Se ativou a transmissão, garante os parâmetros de bitrate e 60 FPS no sender WebRTC
+      if (nextState) {
+        setTimeout(() => {
+          try {
+            const screenTrackPub = localParticipant.getTrackPublication(Track.Source.ScreenShare);
+            if (screenTrackPub && screenTrackPub.track) {
+              const sender = screenTrackPub.track.sender;
+              if (sender && typeof sender.getParameters === 'function') {
+                const params = sender.getParameters();
+                if (params && params.encodings && params.encodings.length > 0) {
+                  params.encodings[0].maxBitrate = 10_000_000; // 10 Mbps Ultra HD
+                  params.encodings[0].maxFramerate = 60;
+                  params.degradationPreference = 'maintain-framerate';
+                  sender.setParameters(params).catch(() => {});
+                }
+              }
+            }
+          } catch (e) {
+            console.error('Aviso ao ajustar sender WebRTC:', e);
           }
-          await localParticipant.setScreenShareEnabled(false);
-        } else {
-          // Abrir seletor de tela nativo do Electron
-          await window.electronAPI.openScreenPicker();
-        }
-      } else {
-        // Modo Web Navegador Padrão
-        const nextState = !isScreenShareEnabled;
-        await localParticipant.setScreenShareEnabled(nextState, {
-          audio: true,
-          resolution: {
-            width: 1920,
-            height: 1080,
-            frameRate: 60,
-          },
-          contentHint: 'motion',
-        });
+        }, 500);
       }
     } catch (err) {
-      console.error('Erro ao alternar compartilhamento de tela:', err);
+      // Se o usuário/amigo cancelar o seletor de tela (AbortError ou NotAllowedError), apenas ignora
+      console.log('Seleção de tela cancelada ou recusada:', err);
     } finally {
+      // GARANTE 100% que o botão destrava e para de girar instantaneamente em caso de cancelamento!
       setIsScreenLoading(false);
     }
   };
 
-  // Escuta a seleção de tela do Electron para iniciar a captura GDI limpa
-  useEffect(() => {
-    if (typeof window === 'undefined' || !window.electronAPI?.isElectron) return;
-
-    const cleanup = window.electronAPI.onSourceSelected(async (sourceId) => {
-      if (!sourceId || !localParticipant) return;
-
-      setIsScreenLoading(true);
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: false,
-          video: {
-            mandatory: {
-              chromeMediaSource: 'desktop',
-              chromeMediaSourceId: sourceId,
-              minFrameRate: 60,
-              maxFrameRate: 60,
-              minWidth: 1920,
-              maxWidth: 1920,
-              minHeight: 1080,
-              maxHeight: 1080,
-            },
-          } as unknown as MediaTrackConstraints,
-        });
-
-        const videoMediaTrack = stream.getVideoTracks()[0];
-        const localVideoTrack = new LocalVideoTrack(videoMediaTrack);
-
-        // Publica a faixa de vídeo limpa (sem bordas amarelas) no LiveKit a 60 FPS
-        const pub = await localParticipant.publishTrack(localVideoTrack, {
-          name: 'screen_share',
-          source: Track.Source.ScreenShare,
-        });
-
-        if (pub && pub.track) {
-          customTrackRef.current = pub.track as LocalVideoTrack;
-        }
-      } catch (err) {
-        console.error('Erro ao iniciar captura GDI de janela no Electron:', err);
-      } finally {
-        setIsScreenLoading(false);
-      }
-    });
-
-    return () => {
-      cleanup();
-    };
-  }, [localParticipant]);
-
   const handleDisconnect = () => {
-    if (customTrackRef.current) {
-      customTrackRef.current.stop();
-      customTrackRef.current = null;
-    }
     room?.disconnect();
     onLeave();
   };
@@ -175,7 +156,7 @@ export function ControlBar({ onLeave }: ControlBarProps) {
             Voz Conectada
           </p>
           <p className="text-[11px] text-[#949ba4] truncate max-w-36">
-            Sala principal / HD 60fps
+            Sala principal / Full HD 60fps
           </p>
         </div>
       </div>
@@ -260,7 +241,7 @@ export function ControlBar({ onLeave }: ControlBarProps) {
           )}
         </div>
 
-        {/* Botão Compartilhar Tela */}
+        {/* Botão Compartilhar Tela (Full HD 1080p 60 FPS) */}
         <div className="relative group">
           <button
             onClick={toggleScreenShare}
@@ -268,15 +249,15 @@ export function ControlBar({ onLeave }: ControlBarProps) {
             className={`w-12 h-12 rounded-full flex items-center justify-center transition-all cursor-pointer ${
               !isScreenShareSupported
                 ? 'bg-[#1e1f22] text-[#4e5058] border border-[#2b2d31] cursor-not-allowed'
-                : isScreenShareEnabled || customTrackRef.current
+                : isScreenShareEnabled
                 ? 'bg-[#23a55a] hover:bg-[#1d8a4b] text-white shadow-lg shadow-emerald-950/40 border border-[#23a55a]'
                 : 'bg-[#313338] hover:bg-[#3b3e45] text-[#dbdee1] border border-[#3f4248]'
             }`}
-            aria-label={isScreenShareEnabled || customTrackRef.current ? 'Interromper compartilhamento' : 'Compartilhar tela (Full HD 1080p 60 FPS)'}
+            aria-label={isScreenShareEnabled ? 'Interromper compartilhamento' : 'Compartilhar tela (Full HD 1080p 60 FPS)'}
           >
             {isScreenLoading ? (
               <Loader2 className="w-5 h-5 animate-spin text-[#949ba4]" />
-            ) : isScreenShareEnabled || customTrackRef.current ? (
+            ) : isScreenShareEnabled ? (
               <MonitorOff className="w-5 h-5" />
             ) : (
               <Monitor className="w-5 h-5" />
@@ -285,9 +266,34 @@ export function ControlBar({ onLeave }: ControlBarProps) {
           <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block bg-[#111214] text-[#dbdee1] text-xs px-3 py-1.5 rounded-md border border-[#2b2d31] whitespace-nowrap shadow-xl">
             {!isScreenShareSupported
               ? 'Compartilhamento de tela indisponível no dispositivo'
-              : isScreenShareEnabled || customTrackRef.current
+              : isScreenShareEnabled
               ? 'Interromper compartilhamento'
               : 'Compartilhar tela (Full HD 1920x1080 @ 60 FPS)'}
+          </div>
+        </div>
+
+        {/* Botão de Bate-papo (Chat) */}
+        <div className="relative group">
+          <button
+            onClick={onToggleChat}
+            className={`w-12 h-12 rounded-full flex items-center justify-center transition-all cursor-pointer relative ${
+              isChatOpen
+                ? 'bg-[#5865F2] hover:bg-[#4752C4] text-white shadow-lg shadow-indigo-950/40 border border-[#5865F2]'
+                : 'bg-[#313338] hover:bg-[#3b3e45] text-[#dbdee1] border border-[#3f4248]'
+            }`}
+            aria-label="Abrir ou fechar bate-papo"
+          >
+            <MessageSquare className="w-5 h-5" />
+
+            {/* Contador de Mensagens Não Lidas */}
+            {unreadCount > 0 && !isChatOpen && (
+              <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-[#f23f43] text-white text-[10px] font-extrabold flex items-center justify-center shadow-md animate-bounce border border-[#232428]">
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
+          </button>
+          <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block bg-[#111214] text-[#dbdee1] text-xs px-3 py-1.5 rounded-md border border-[#2b2d31] whitespace-nowrap shadow-xl">
+            {isChatOpen ? 'Fechar Bate-papo' : 'Abrir Bate-papo da Sala'}
           </div>
         </div>
 

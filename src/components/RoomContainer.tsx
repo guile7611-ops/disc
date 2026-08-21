@@ -1,10 +1,11 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { LiveKitRoom, RoomAudioRenderer } from '@livekit/components-react';
 import { RoomHeader } from '@/components/RoomHeader';
 import { ScreenShareArea } from '@/components/ScreenShareArea';
 import { ParticipantList } from '@/components/ParticipantList';
+import { ChatPanel } from '@/components/ChatPanel';
 import { ControlBar } from '@/components/ControlBar';
 import { AudioFallbackNotice } from '@/components/AudioFallbackNotice';
 import { useMicrophones } from '@/hooks/useMicrophones';
@@ -17,6 +18,7 @@ interface RoomContainerProps {
 
 export function RoomContainer({ token, wsUrl, onLeave }: RoomContainerProps) {
   const { selectedDeviceId } = useMicrophones();
+  const [isChatOpen, setIsChatOpen] = useState(false);
 
   return (
     <div className="fixed inset-0 w-screen h-screen bg-[#1e1f22] overflow-hidden select-none flex flex-col z-50">
@@ -65,14 +67,19 @@ export function RoomContainer({ token, wsUrl, onLeave }: RoomContainerProps) {
         {/* Cabeçalho do Canal */}
         <RoomHeader onLeave={onLeave} />
 
-        {/* Conteúdo Principal (Área de Telas + Lista de Membros) */}
+        {/* Conteúdo Principal (Área de Telas + Lista de Membros + Painel de Bate-papo) */}
         <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative min-h-0">
           <ScreenShareArea />
           <ParticipantList />
+          <ChatPanel isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
         </div>
 
-        {/* Barra de Controles Fixa no Rodapé */}
-        <ControlBar onLeave={onLeave} />
+        {/* Barra de Controles Fixa no Rodapé com controle do Chat */}
+        <ControlBar
+          onLeave={onLeave}
+          isChatOpen={isChatOpen}
+          onToggleChat={() => setIsChatOpen((prev) => !prev)}
+        />
       </LiveKitRoom>
     </div>
   );
