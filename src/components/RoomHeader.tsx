@@ -37,8 +37,13 @@ export function RoomHeader({ onLeave }: RoomHeaderProps) {
   const { formattedTime } = useCallTimer(isConnected);
 
   const handleDownloadApp = () => {
-    // Redireciona para os releases mais recentes do GitHub / download do executável
-    window.open('https://github.com/guile7611-ops/disc/releases', '_blank');
+    // Inicia o download direto do executável do aplicativo Desktop
+    const link = document.createElement('a');
+    link.href = '/downloads/Sala-Principal.exe';
+    link.download = 'Sala-Principal.exe';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const renderStateBadge = () => {
@@ -103,7 +108,7 @@ export function RoomHeader({ onLeave }: RoomHeaderProps) {
         {isWeb && (
           <button
             onClick={handleDownloadApp}
-            title="Baixar Aplicativo Desktop para Windows"
+            title="Baixar diretamente o Aplicativo Desktop para Windows"
             className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#5865F2]/20 hover:bg-[#5865F2] border border-[#5865F2]/40 text-[#5865F2] hover:text-white text-xs font-bold transition-all cursor-pointer shadow-sm group"
           >
             <Download className="w-3.5 h-3.5 group-hover:animate-bounce" />
