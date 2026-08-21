@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Selecione a Tela ou Janela</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+    body { background-color: #1e1f22; color: #dbdee1; padding: 20px; user-select: none; }
+    h2 { font-size: 16px; font-weight: bold; margin-bottom: 12px; color: #ffffff; }
+    .tabs { display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 1px solid #2b2d31; padding-bottom: 8px; }
+    .tab { padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; background: transparent; color: #949ba4; border: none; }
+    .tab.active { background: #35373c; color: #ffffff; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; max-height: 420px; overflow-y: auto; padding-right: 4px; }
+    .card { background: #2b2d31; border: 2px solid transparent; border-radius: 8px; padding: 8px; cursor: pointer; transition: all 0.15s ease; display: flex; flex-direction: column; gap: 8px; }
+    .card:hover { border-color: #5865F2; background: #313338; }
+    .img-container { width: 100%; height: 110px; background: #111214; border-radius: 6px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+    .img-container img { max-width: 100%; max-height: 100%; object-fit: contain; }
+    .title { font-size: 12px; font-weight: 600; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; color: #f2f3f5; }
+    .actions { display: flex; justify-content: flex-end; margin-top: 16px; gap: 8px; }
+    .btn-cancel { padding: 8px 16px; border-radius: 4px; background: transparent; color: #dbdee1; border: none; font-weight: 600; font-size: 13px; cursor: pointer; }
+    .btn-cancel:hover { background: #35373c; }
+  </style>
+</head>
+<body>
+  <h2>O que você deseja transmitir?</h2>
+  <div class="tabs">
+    <button class="tab active" id="tab-screens" onclick="switchTab('screen')">Telas Inteiras</button>
+    <button class="tab" id="tab-windows" onclick="switchTab('window')">Janelas de Aplicativos</button>
+  </div>
+
+  <div class="grid" id="sources-grid"></div>
+
+  <div class="actions">
+    <button class="btn-cancel" onclick="cancelSelection()">Cancelar</button>
+  </div>
+
+  <script>
+    const { ipcRenderer } = require('electron');
+    let allSources = [];
+    let currentTab = 'screen';
+
+    ipcRenderer.on('init-sources', (event, sources) => {
+      allSources = sources;
+      render();
+    });
+
+    function switchTab(type) {
+      currentTab = type;
+      document.getElementById('tab-screens').classList.toggle('active', type === 'screen');
+      document.getElementById('tab-windows').classList.toggle('active', type === 'window');
+      render();
+    }
+
+    function render() {
+      const grid = document.getElementById('sources-grid');
+      grid.innerHTML = '';
+
+      const filtered = allSources.filter(s => {
+        if (currentTab === 'screen') return s.id.startsWith('screen');
+        return s.id.startsWith('window');
+      });
+
+      if (filtered.length === 0) {
+        grid.innerHTML = '<p style="color:#949ba4; font-size:12px; grid-column: 1/-1;">Nenhuma janela encontrada.</p>';
+        return;
+      }
+
+      filtered.forEach(source => {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.onclick = () => selectSource(source.id);
+
+        const imgContainer = document.createElement('div');
+        imgContainer.className = 'img-container';
+        const img = document.createElement('img');
+        img.src = source.thumbnail;
+        imgContainer.appendChild(img);
+
+        const title = document.createElement('div');
+        title.className = 'title';
+        title.textContent = source.name;
+
+        card.appendChild(imgContainer);
+        card.appendChild(title);
+        grid.appendChild(card);
+      });
+    }
+
+    function selectSource(id) {
+      ipcRenderer.send('source-chosen', id);
+    }
+
+    function cancelSelection() {
+      ipcRenderer.send('source-chosen', null);
+    }
+  </script>
+</body>
+</html>

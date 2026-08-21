@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { useLocalParticipant, useRoomContext } from '@livekit/components-react';
 import { Track } from 'livekit-client';
 import { useScreenShareSupport } from '@/hooks/useScreenShareSupport';
-import { Mic, MicOff, Monitor, MonitorOff, PhoneOff, Loader2, Volume2, Info } from 'lucide-react';
+import { Mic, MicOff, Monitor, MonitorOff, PhoneOff, Loader2, Volume2 } from 'lucide-react';
 
 interface ControlBarProps {
   onLeave: () => void;
@@ -17,7 +17,6 @@ export function ControlBar({ onLeave }: ControlBarProps) {
 
   const [isMicLoading, setIsMicLoading] = useState(false);
   const [isScreenLoading, setIsScreenLoading] = useState(false);
-  const [showTip, setShowTip] = useState(false);
 
   const toggleMicrophone = async () => {
     if (!localParticipant || isMicLoading) return;
@@ -41,10 +40,6 @@ export function ControlBar({ onLeave }: ControlBarProps) {
     setIsScreenLoading(true);
     try {
       const nextState = !isScreenShareEnabled;
-      if (nextState) {
-        setShowTip(true);
-      }
-
       await localParticipant.setScreenShareEnabled(nextState, {
         audio: true, // Captura áudio do sistema
         resolution: {
@@ -91,25 +86,6 @@ export function ControlBar({ onLeave }: ControlBarProps) {
 
   return (
     <footer className="h-20 bg-[#232428] border-t border-[#1e1f22] px-4 md:px-6 flex items-center justify-between z-20 shrink-0 select-none relative">
-      {/* Toast Informativo de Dica de Tela Inteira para Remover Borda Amarela */}
-      {showTip && isScreenShareEnabled && (
-        <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-50 bg-[#111214] text-[#dbdee1] border border-[#23a55a] p-3 rounded-xl shadow-2xl max-w-md text-xs flex items-start gap-3 animate-in slide-in-from-bottom-2">
-          <Info className="w-5 h-5 text-[#23a55a] shrink-0 mt-0.5" />
-          <div className="flex-1 space-y-1">
-            <p className="font-bold text-white">Dica para Transmissão Full HD 60 FPS sem borda amarela:</p>
-            <p className="text-[#949ba4]">
-              No popup do seu navegador, escolha <strong className="text-[#23a55a]">&quot;Tela Inteira&quot;</strong> (Monitor) em vez de &quot;Janela de Aplicativo&quot;. O Windows remove a borda amarela e transmite em 1080p 60 FPS nativo.
-            </p>
-          </div>
-          <button
-            onClick={() => setShowTip(false)}
-            className="text-[#949ba4] hover:text-white font-bold text-sm px-1"
-          >
-            ✕
-          </button>
-        </div>
-      )}
-
       {/* Indicador de Status da Voz - Estilo Discord */}
       <div className="hidden sm:flex items-center gap-3 min-w-48">
         <div className="w-9 h-9 rounded-full bg-[#2b2d31] flex items-center justify-center text-[#23a55a]">

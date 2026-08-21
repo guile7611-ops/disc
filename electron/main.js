@@ -1,7 +1,8 @@
-const { app, BrowserWindow, session, desktopCapturer } = require('electron');
+const { app, BrowserWindow, session, desktopCapturer, ipcMain } = require('electron');
 const path = require('path');
 
 let mainWindow;
+let pickerWindow = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -21,23 +22,73 @@ function createWindow() {
     },
   });
 
-  // Manipulador nativo para compartilhamento de tela WebRTC no Electron
+  // Manipulador nativo de compartilhamento de tela com seletor de janelas e telas
   session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
-    desktopCapturer.getSources({ types: ['screen', 'window'] }).then((sources) => {
-      // Prefere capturar a tela inteira por padrão para garantir 1080p 60fps sem borda amarela do Windows
-      const primarySource = sources.find((s) => s.id.startsWith('screen')) || sources[0];
-      if (primarySource) {
-        callback({ video: primarySource, audio: 'loopback' });
-      } else {
+    desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 320, height: 180 } })
+      .then((sources) => {
+        if (pickerWindow) {
+          try { pickerWindow.close(); } catch (e) {}
+        }
+
+        pickerWindow = new BrowserWindow({
+          width: 680,
+          height: 560,
+          resizable: false,
+          modal: true,
+          parent: mainWindow,
+          title: 'Compartilhar Tela ou Janela',
+          icon: path.join(__dirname, '../build/icon.ico'),
+          autoHideMenuBar: true,
+          backgroundColor: '#1e1f22',
+          webPreferences: {
+            nodeIntegration: true,
+            contextIsolation: false,
+          },
+        });
+
+        pickerWindow.loadFile(path.join(__dirname, 'picker.html'));
+
+        const formattedSources = sources.map((s) => ({
+          id: s.id,
+          name: s.name,
+          thumbnail: s.thumbnail.toDataURL(),
+        }));
+
+        pickerWindow.webContents.on('did-finish-load', () => {
+          if (pickerWindow) {
+            pickerWindow.webContents.send('init-sources', formattedSources);
+          }
+        });
+
+        const handleChosen = (event, sourceId) => {
+          if (pickerWindow) {
+            try { pickerWindow.close(); } catch (e) {}
+            pickerWindow = null;
+          }
+          if (sourceId) {
+            const selectedSource = sources.find((s) => s.id === sourceId);
+            if (selectedSource) {
+              callback({ video: selectedSource, audio: 'loopback' });
+              return;
+            }
+          }
+          callback({});
+        };
+
+        ipcMain.once('source-chosen', handleChosen);
+
+        pickerWindow.on('closed', () => {
+          ipcMain.removeListener('source-chosen', handleChosen);
+          pickerWindow = null;
+        });
+      })
+      .catch((err) => {
+        console.error('Erro ao listar fontes no desktopCapturer:', err);
         callback({});
-      }
-    }).catch((err) => {
-      console.error('Erro no desktopCapturer:', err);
-      callback({});
-    });
+      });
   });
 
-  // Permissões automáticas de áudio, vídeo e mídia de tela
+  // Permissões automáticas de áudio e vídeo
   session.defaultSession.setPermissionCheckHandler((webContents, permission) => {
     if (permission === 'media' || permission === 'display-capture') return true;
     return true;
@@ -45,7 +96,6 @@ function createWindow() {
 
   session.defaultSession.setDevicePermissionHandler(() => true);
 
-  // Carrega o app na Vercel (ou URL customizada)
   const appUrl = process.env.APP_URL || 'https://disc-brown.vercel.app';
   mainWindow.loadURL(appUrl);
 
@@ -54,7 +104,10 @@ function createWindow() {
   });
 }
 
-// Flags de desempenho do Chromium para alta performance de vídeo e WebRTC 60 FPS
+// Desativa o recurso WinGraphicsCapture do Windows para eliminar a borda amarela nativamente em janelas
+app.commandLine.appendSwitch('disable-features', 'WinGraphicsCapture,WinGraphicsCaptureBorder');
+
+// Flags de desempenho do Chromium para 60 FPS e captura nativa DXGI sem bordas
 app.commandLine.appendSwitch('high-dpi-support', '1');
 app.commandLine.appendSwitch('force-device-scale-factor', '1');
 app.commandLine.appendSwitch('enable-usermedia-screen-capturing');
