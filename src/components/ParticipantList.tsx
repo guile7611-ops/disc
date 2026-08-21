@@ -1,14 +1,15 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useParticipants, useLocalParticipant } from '@livekit/components-react';
-import { RemoteParticipant } from 'livekit-client';
+import { useParticipants, useLocalParticipant, useTracks } from '@livekit/components-react';
+import { RemoteParticipant, Track } from 'livekit-client';
 import { VolumeContextMenu } from '@/components/VolumeContextMenu';
-import { Users, Mic, MicOff, Monitor, Volume2, User, VolumeX } from 'lucide-react';
+import { Users, Mic, MicOff, Monitor, Volume2, User, VolumeX, Play } from 'lucide-react';
 
 export function ParticipantList() {
   const participants = useParticipants();
   const { localParticipant } = useLocalParticipant();
+  const screenShareTracks = useTracks([{ source: Track.Source.ScreenShare, withPlaceholder: false }]);
 
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -33,7 +34,6 @@ export function ParticipantList() {
   const handleVolumeChange = (p: RemoteParticipant, newVolume: number) => {
     setVolumes((prev) => ({ ...prev, [p.identity]: newVolume }));
 
-    // Aplica o volume na API do LiveKit (1.0 = 100%, 2.0 = 200%)
     try {
       if (typeof p.setVolume === 'function') {
         p.setVolume(newVolume / 100);
@@ -58,6 +58,15 @@ export function ParticipantList() {
     }
   };
 
+  // Dispara o religamento e foco da transmissão do participante
+  const handleWatchStream = (participantIdentity: string) => {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('resume-stream', { detail: { identity: participantIdentity } })
+      );
+    }
+  };
+
   return (
     <aside className="w-full md:w-72 bg-[#2b2d31] border-t md:border-t-0 md:border-l border-[#1e1f22] flex flex-col h-64 md:h-full z-10 shrink-0 select-none">
       {/* Cabeçalho do Painel no Estilo Discord */}
@@ -68,7 +77,7 @@ export function ParticipantList() {
             Membros Online — {participants.length}
           </h2>
         </div>
-        <span className="text-[10px] text-[#949ba4]">Clique c/ botão direito p/ volume</span>
+        <span className="text-[10px] text-[#949ba4]">Botão direito p/ volume</span>
       </div>
 
       {/* Lista de Participantes */}
@@ -77,7 +86,9 @@ export function ParticipantList() {
           const isLocal = p.identity === localParticipant.identity;
           const isMicEnabled = p.isMicrophoneEnabled;
           const isSpeaking = p.isSpeaking;
-          const isScreenSharing = p.isScreenShareEnabled;
+          const isScreenSharing =
+            p.isScreenShareEnabled ||
+            screenShareTracks.some((t) => t.participant.identity === p.identity);
           const userVolume = volumes[p.identity] ?? 100;
           const isLocallyMuted = !!mutedStates[p.identity];
 
@@ -142,7 +153,7 @@ export function ParticipantList() {
                     )}
                     {isScreenSharing && (
                       <span className="text-[11px] text-[#5865F2] font-semibold flex items-center gap-1">
-                        <Monitor className="w-3 h-3" />
+                        <Monitor className="w-3 h-3 text-[#5865F2]" />
                         Ao Vivo (1080p60)
                       </span>
                     )}
@@ -150,8 +161,23 @@ export function ParticipantList() {
                 </div>
               </div>
 
-              {/* Status do Microfone */}
-              <div className="ml-2 shrink-0">
+              {/* Botão Vermelho ASSISTIR para Transmissão + Status do Microfone */}
+              <div className="ml-2 shrink-0 flex items-center gap-1.5">
+                {isScreenSharing && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleWatchStream(p.identity);
+                    }}
+                    className="px-2.5 py-1 rounded-md bg-[#f23f43] hover:bg-[#d83a3e] text-white text-[11px] font-extrabold flex items-center gap-1 transition-all shadow-md shadow-rose-950/40 animate-pulse cursor-pointer"
+                    title="Assistir à transmissão ao vivo"
+                  >
+                    <Play className="w-3 h-3 fill-current" />
+                    <span>ASSISTIR</span>
+                  </button>
+                )}
+
                 {isLocallyMuted ? (
                   <div className="p-1.5 rounded-md bg-[#f23f43]/20 text-[#f23f43]" title="Mutado por você">
                     <VolumeX className="w-4 h-4" />

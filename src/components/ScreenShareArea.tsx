@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useTracks, VideoTrack, AudioTrack, TrackReference } from '@livekit/components-react';
-import { Track, RemoteAudioTrack } from 'livekit-client';
+import { Track, RemoteAudioTrack, RemoteTrackPublication } from 'livekit-client';
 import {
   Monitor,
   Grid,
@@ -45,6 +45,78 @@ export function ScreenShareArea() {
 
   const containerRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  const updateStreamState = useCallback(
+    (
+      identity: string,
+      updates: Partial<StreamState>,
+      vTrackPub?: any,
+      aTrackPub?: any
+    ) => {
+      setStreamStates((prev) => {
+        const current = prev[identity] || { isMuted: false, volume: 100, isStopped: false };
+        const nextState = { ...current, ...updates };
+
+        // Aplica volume e mudo diretamente na faixa de áudio WebRTC se disponível
+        if (aTrackPub?.track) {
+          const audioTrackObj = aTrackPub.track as RemoteAudioTrack;
+          const targetVol = nextState.isStopped || nextState.isMuted ? 0 : nextState.volume / 100;
+          if (typeof audioTrackObj.setVolume === 'function') {
+            audioTrackObj.setVolume(targetVol);
+          }
+        }
+
+        return {
+          ...prev,
+          [identity]: nextState,
+        };
+      });
+    },
+    []
+  );
+
+  // Retoma a transmissão ao clicar sobre a tela pausada ou pelo botão vermelho ASSISTIR
+  const handleResumeStream = useCallback(
+    (identity: string, vTrackPub?: any, aTrackPub?: any) => {
+      updateStreamState(identity, { isStopped: false }, vTrackPub, aTrackPub);
+
+      if (vTrackPub && typeof (vTrackPub as RemoteTrackPublication).setSubscribed === 'function') {
+        (vTrackPub as RemoteTrackPublication).setSubscribed(true);
+      } else {
+        const vt = videoTracks.find((t) => t.participant.identity === identity);
+        if (vt?.publication && typeof (vt.publication as RemoteTrackPublication).setSubscribed === 'function') {
+          (vt.publication as RemoteTrackPublication).setSubscribed(true);
+        }
+      }
+
+      if (aTrackPub && typeof (aTrackPub as RemoteTrackPublication).setSubscribed === 'function') {
+        (aTrackPub as RemoteTrackPublication).setSubscribed(true);
+      } else {
+        const at = audioTracks.find((t) => t.participant.identity === identity);
+        if (at?.publication && typeof (at.publication as RemoteTrackPublication).setSubscribed === 'function') {
+          (at.publication as RemoteTrackPublication).setSubscribed(true);
+        }
+      }
+
+      setFocusedParticipantId(identity);
+    },
+    [updateStreamState, videoTracks, audioTracks]
+  );
+
+  // Escuta o evento customizado 'resume-stream' disparado pelo botão vermelho ASSISTIR da lista de membros
+  useEffect(() => {
+    const handleCustomResume = (e: Event) => {
+      const customEvt = e as CustomEvent<{ identity: string }>;
+      if (customEvt.detail?.identity) {
+        handleResumeStream(customEvt.detail.identity);
+      }
+    };
+
+    window.addEventListener('resume-stream', handleCustomResume);
+    return () => {
+      window.removeEventListener('resume-stream', handleCustomResume);
+    };
+  }, [handleResumeStream]);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -93,32 +165,6 @@ export function ScreenShareArea() {
     return streamStates[identity] || { isMuted: false, volume: 100, isStopped: false };
   };
 
-  const updateStreamState = (
-    identity: string,
-    updates: Partial<StreamState>,
-    vTrackPub?: any,
-    aTrackPub?: any
-  ) => {
-    setStreamStates((prev) => {
-      const current = prev[identity] || { isMuted: false, volume: 100, isStopped: false };
-      const nextState = { ...current, ...updates };
-
-      // Aplica volume e mudo diretamente na faixa de áudio WebRTC se disponível
-      if (aTrackPub?.track) {
-        const audioTrackObj = aTrackPub.track as RemoteAudioTrack;
-        const targetVol = nextState.isStopped || nextState.isMuted ? 0 : nextState.volume / 100;
-        if (typeof audioTrackObj.setVolume === 'function') {
-          audioTrackObj.setVolume(targetVol);
-        }
-      }
-
-      return {
-        ...prev,
-        [identity]: nextState,
-      };
-    });
-  };
-
   // Abre o menu de contexto no botão direito
   const handleContextMenu = (e: React.MouseEvent, identity: string) => {
     e.preventDefault();
@@ -130,27 +176,15 @@ export function ScreenShareArea() {
     setContextMenu({ x, y, participantIdentity: identity });
   };
 
-  // Retoma a transmissão ao clicar sobre a tela pausada (Assistir de Novo)
-  const handleResumeStream = (identity: string, vTrackPub?: any, aTrackPub?: any) => {
-    updateStreamState(identity, { isStopped: false }, vTrackPub, aTrackPub);
-
-    if (vTrackPub) {
-      vTrackPub.setSubscribed(true);
-    }
-    if (aTrackPub) {
-      aTrackPub.setSubscribed(true);
-    }
-  };
-
   // Parar de assistir a transmissão (Desliga Vídeo E Áudio)
   const handleStopStream = (identity: string, vTrackPub?: any, aTrackPub?: any) => {
     updateStreamState(identity, { isStopped: true }, vTrackPub, aTrackPub);
 
-    if (vTrackPub) {
-      vTrackPub.setSubscribed(false);
+    if (vTrackPub && typeof (vTrackPub as RemoteTrackPublication).setSubscribed === 'function') {
+      (vTrackPub as RemoteTrackPublication).setSubscribed(false);
     }
-    if (aTrackPub) {
-      aTrackPub.setSubscribed(false);
+    if (aTrackPub && typeof (aTrackPub as RemoteTrackPublication).setSubscribed === 'function') {
+      (aTrackPub as RemoteTrackPublication).setSubscribed(false);
     }
     setContextMenu(null);
   };
