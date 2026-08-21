@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { useTracks, VideoTrack } from '@livekit/components-react';
-import { Track } from 'livekit-client';
+import { useTracks, VideoTrack, AudioTrack, TrackReference } from '@livekit/components-react';
+import { Track, RemoteAudioTrack } from 'livekit-client';
 import {
   Monitor,
   Grid,
@@ -26,15 +26,19 @@ interface StreamState {
 interface ContextMenuPosition {
   x: number;
   y: number;
-  trackSid: string;
+  participantIdentity: string;
 }
 
 export function ScreenShareArea() {
-  const screenShareTracks = useTracks([Track.Source.ScreenShare]);
-  const [focusedTrackSid, setFocusedTrackSid] = useState<string | null>(null);
+  // Faixas de Vídeo da Tela
+  const videoTracks = useTracks([{ source: Track.Source.ScreenShare, withPlaceholder: false }]);
+  // Faixas de Áudio da Tela
+  const audioTracks = useTracks([{ source: Track.Source.ScreenShareAudio, withPlaceholder: false }]);
+
+  const [focusedParticipantId, setFocusedParticipantId] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // Estado individual para cada transmissão (Mutar, Volume, Parado)
+  // Estado individual para cada transmissão por Participant Identity (Mutar, Volume, Parado)
   const [streamStates, setStreamStates] = useState<Record<string, StreamState>>({});
   // Posição do Menu de Contexto (Botão Direito)
   const [contextMenu, setContextMenu] = useState<ContextMenuPosition | null>(null);
@@ -85,51 +89,74 @@ export function ScreenShareArea() {
     }
   };
 
-  const getStreamState = (trackSid: string): StreamState => {
-    return streamStates[trackSid] || { isMuted: false, volume: 100, isStopped: false };
+  const getStreamState = (identity: string): StreamState => {
+    return streamStates[identity] || { isMuted: false, volume: 100, isStopped: false };
   };
 
-  const updateStreamState = (trackSid: string, updates: Partial<StreamState>) => {
-    setStreamStates((prev) => ({
-      ...prev,
-      [trackSid]: {
-        ...(prev[trackSid] || { isMuted: false, volume: 100, isStopped: false }),
-        ...updates,
-      },
-    }));
+  const updateStreamState = (
+    identity: string,
+    updates: Partial<StreamState>,
+    vTrackPub?: any,
+    aTrackPub?: any
+  ) => {
+    setStreamStates((prev) => {
+      const current = prev[identity] || { isMuted: false, volume: 100, isStopped: false };
+      const nextState = { ...current, ...updates };
+
+      // Aplica volume e mudo diretamente na faixa de áudio WebRTC se disponível
+      if (aTrackPub?.track) {
+        const audioTrackObj = aTrackPub.track as RemoteAudioTrack;
+        const targetVol = nextState.isStopped || nextState.isMuted ? 0 : nextState.volume / 100;
+        if (typeof audioTrackObj.setVolume === 'function') {
+          audioTrackObj.setVolume(targetVol);
+        }
+      }
+
+      return {
+        ...prev,
+        [identity]: nextState,
+      };
+    });
   };
 
-  // Abre o menu de contexto customizado no botão direito
-  const handleContextMenu = (e: React.MouseEvent, trackSid: string) => {
+  // Abre o menu de contexto no botão direito
+  const handleContextMenu = (e: React.MouseEvent, identity: string) => {
     e.preventDefault();
     e.stopPropagation();
 
-    // Limita coordenadas para não sair da tela
-    const x = Math.min(e.clientX, window.innerWidth - 220);
-    const y = Math.min(e.clientY, window.innerHeight - 200);
+    const x = Math.min(e.clientX, window.innerWidth - 230);
+    const y = Math.min(e.clientY, window.innerHeight - 220);
 
-    setContextMenu({ x, y, trackSid });
+    setContextMenu({ x, y, participantIdentity: identity });
   };
 
-  // Retoma a transmissão ao clicar sobre a tela pausada
-  const handleResumeStream = (trackSid: string, trackRef?: any) => {
-    updateStreamState(trackSid, { isStopped: false });
-    if (trackRef?.publication) {
-      trackRef.publication.setSubscribed(true);
+  // Retoma a transmissão ao clicar sobre a tela pausada (Assistir de Novo)
+  const handleResumeStream = (identity: string, vTrackPub?: any, aTrackPub?: any) => {
+    updateStreamState(identity, { isStopped: false }, vTrackPub, aTrackPub);
+
+    if (vTrackPub) {
+      vTrackPub.setSubscribed(true);
+    }
+    if (aTrackPub) {
+      aTrackPub.setSubscribed(true);
     }
   };
 
-  // Parar de assistir a transmissão
-  const handleStopStream = (trackSid: string, trackRef?: any) => {
-    updateStreamState(trackSid, { isStopped: true });
-    if (trackRef?.publication) {
-      trackRef.publication.setSubscribed(false);
+  // Parar de assistir a transmissão (Desliga Vídeo E Áudio)
+  const handleStopStream = (identity: string, vTrackPub?: any, aTrackPub?: any) => {
+    updateStreamState(identity, { isStopped: true }, vTrackPub, aTrackPub);
+
+    if (vTrackPub) {
+      vTrackPub.setSubscribed(false);
+    }
+    if (aTrackPub) {
+      aTrackPub.setSubscribed(false);
     }
     setContextMenu(null);
   };
 
   // Se ninguém estiver compartilhando a tela
-  if (screenShareTracks.length === 0) {
+  if (videoTracks.length === 0) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-6 text-center bg-[#313338] relative overflow-hidden select-none">
         <div className="w-24 h-24 rounded-full bg-[#2b2d31] border border-[#3f4248] flex items-center justify-center text-[#5865F2] mb-4 shadow-2xl shadow-black/50">
@@ -145,22 +172,42 @@ export function ScreenShareArea() {
     );
   }
 
-  const focusedTrack = focusedTrackSid
-    ? screenShareTracks.find((t) => t.publication?.trackSid === focusedTrackSid)
+  // Foco selecionado
+  const rawFocusedVideoTrack = focusedParticipantId
+    ? videoTracks.find((t) => t.participant.identity === focusedParticipantId)
     : null;
+  const focusedVideoTrack =
+    rawFocusedVideoTrack && rawFocusedVideoTrack.publication
+      ? (rawFocusedVideoTrack as TrackReference)
+      : null;
 
   // Renderização do Modo Foco (Spotlight)
-  if (focusedTrack) {
-    const participantName = focusedTrack.participant?.name || 'Participante';
-    const trackSid = focusedTrack.publication?.trackSid || focusedTrack.participant.identity;
-    const currentState = getStreamState(trackSid);
+  if (focusedVideoTrack) {
+    const participantName = focusedVideoTrack.participant?.name || 'Participante';
+    const identity = focusedVideoTrack.participant.identity;
+    const currentState = getStreamState(identity);
+
+    const vTrackPub = focusedVideoTrack.publication;
+    const rawAudioTrackRef = audioTracks.find((t) => t.participant.identity === identity && t.publication);
+    const audioTrackRef: TrackReference | null =
+      rawAudioTrackRef && rawAudioTrackRef.publication
+        ? (rawAudioTrackRef as TrackReference)
+        : null;
+    const aTrackPub = audioTrackRef?.publication;
+
+    const currentVolume = currentState.isMuted || currentState.isStopped ? 0 : currentState.volume / 100;
 
     return (
       <div
         ref={containerRef}
         className="flex-1 bg-black flex flex-col relative overflow-hidden outline-none border-none ring-0 select-none"
       >
-        {/* Banner Superior no Modo Foco (Se não estiver em tela cheia) */}
+        {/* Renderiza explicitamente o áudio da transmissão de tela com controle de volume */}
+        {audioTrackRef && (
+          <AudioTrack trackRef={audioTrackRef} volume={currentVolume} />
+        )}
+
+        {/* Banner Superior no Modo Foco */}
         {!isFullscreen && (
           <>
             <div className="absolute top-4 left-4 z-20 bg-[#1e1f22]/90 backdrop-blur-md border border-[#2b2d31] px-4 py-2 rounded-lg flex items-center gap-3 shadow-xl">
@@ -174,11 +221,11 @@ export function ScreenShareArea() {
               </div>
 
               <button
-                onClick={() => setFocusedTrackSid(null)}
+                onClick={() => setFocusedParticipantId(null)}
                 className="ml-3 px-2.5 py-1 rounded bg-[#313338] hover:bg-[#3b3e45] text-xs font-semibold text-[#dbdee1] flex items-center gap-1 transition-colors cursor-pointer"
               >
                 <Grid className="w-3.5 h-3.5" />
-                <span>Ver todas ({screenShareTracks.length})</span>
+                <span>Ver todas ({videoTracks.length})</span>
               </button>
             </div>
 
@@ -193,15 +240,15 @@ export function ScreenShareArea() {
           </>
         )}
 
-        {/* Quadro da Transmissão com Context Menu no Botão Direito */}
+        {/* Quadro da Transmissão */}
         <div
-          onContextMenu={(e) => handleContextMenu(e, trackSid)}
+          onContextMenu={(e) => handleContextMenu(e, identity)}
           className="w-full h-full flex items-center justify-center p-0 outline-none border-none ring-0 bg-black overflow-hidden relative cursor-pointer"
         >
           {currentState.isStopped ? (
             /* Overlay de Transmissão Pausada (Clique para assistir de novo) */
             <div
-              onClick={() => handleResumeStream(trackSid, focusedTrack)}
+              onClick={() => handleResumeStream(identity, vTrackPub, aTrackPub)}
               className="w-full h-full flex flex-col items-center justify-center bg-[#111214]/95 text-center p-6 cursor-pointer group hover:bg-[#111214]/90 transition-all z-10"
             >
               <div className="w-16 h-16 rounded-full bg-[#5865F2] group-hover:scale-110 flex items-center justify-center text-white mb-3 shadow-2xl transition-transform">
@@ -214,21 +261,25 @@ export function ScreenShareArea() {
             </div>
           ) : (
             <VideoTrack
-              trackRef={focusedTrack}
+              trackRef={focusedVideoTrack}
               className="w-full h-full object-contain max-h-full max-w-full outline-none border-none ring-0 shadow-none overflow-hidden scale-[1.002]"
             />
           )}
         </div>
 
         {/* Menu de Contexto Customizado (Botão Direito) */}
-        {contextMenu && contextMenu.trackSid === trackSid && (
+        {contextMenu && contextMenu.participantIdentity === identity && (
           <RenderContextMenu
             position={contextMenu}
             state={currentState}
             participantName={participantName}
-            onToggleMute={() => updateStreamState(trackSid, { isMuted: !currentState.isMuted })}
-            onVolumeChange={(v) => updateStreamState(trackSid, { volume: v })}
-            onStopStream={() => handleStopStream(trackSid, focusedTrack)}
+            onToggleMute={() =>
+              updateStreamState(identity, { isMuted: !currentState.isMuted }, vTrackPub, aTrackPub)
+            }
+            onVolumeChange={(v) =>
+              updateStreamState(identity, { volume: v }, vTrackPub, aTrackPub)
+            }
+            onStopStream={() => handleStopStream(identity, vTrackPub, aTrackPub)}
             onClose={() => setContextMenu(null)}
             ref={menuRef}
           />
@@ -239,9 +290,9 @@ export function ScreenShareArea() {
 
   // Grade de Telas Simultâneas (Estilo Discord)
   const gridColsClass =
-    screenShareTracks.length === 1
+    videoTracks.length === 1
       ? 'grid-cols-1'
-      : screenShareTracks.length === 2
+      : videoTracks.length === 2
       ? 'grid-cols-1 md:grid-cols-2'
       : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3';
 
@@ -254,7 +305,7 @@ export function ScreenShareArea() {
         <div className="mb-3 px-3 py-2 bg-[#2b2d31] rounded-lg border border-[#313338] flex items-center justify-between z-10">
           <span className="text-xs font-bold text-[#dbdee1] flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-[#f23f43] animate-pulse" />
-            {screenShareTracks.length} Transmissões ao vivo simultâneas (60 FPS)
+            {videoTracks.length} Transmissões ao vivo simultâneas (60 FPS)
           </span>
 
           <button
@@ -270,17 +321,35 @@ export function ScreenShareArea() {
 
       {/* Grade de Telas Simultâneas */}
       <div className={`flex-1 grid ${gridColsClass} gap-3 h-full overflow-y-auto`}>
-        {screenShareTracks.map((trackRef) => {
-          const participantName = trackRef.participant?.name || 'Participante';
-          const trackSid = trackRef.publication?.trackSid || trackRef.participant.identity;
-          const currentState = getStreamState(trackSid);
+        {videoTracks.map((rawVTrackRef) => {
+          if (!rawVTrackRef.publication) return null;
+          const vTrackRef = rawVTrackRef as TrackReference;
+
+          const participantName = vTrackRef.participant?.name || 'Participante';
+          const identity = vTrackRef.participant.identity;
+          const currentState = getStreamState(identity);
+
+          const vTrackPub = vTrackRef.publication;
+          const rawAudioTrackRef = audioTracks.find((t) => t.participant.identity === identity && t.publication);
+          const audioTrackRef: TrackReference | null =
+            rawAudioTrackRef && rawAudioTrackRef.publication
+              ? (rawAudioTrackRef as TrackReference)
+              : null;
+          const aTrackPub = audioTrackRef?.publication;
+
+          const currentVolume = currentState.isMuted || currentState.isStopped ? 0 : currentState.volume / 100;
 
           return (
             <div
-              key={trackSid}
-              onContextMenu={(e) => handleContextMenu(e, trackSid)}
+              key={identity}
+              onContextMenu={(e) => handleContextMenu(e, identity)}
               className="relative group bg-black border border-[#2b2d31] hover:border-[#5865F2] rounded-xl overflow-hidden flex items-center justify-center transition-all shadow-xl min-h-48 outline-none ring-0 cursor-pointer"
             >
+              {/* Renderiza explicitamente o áudio da transmissão com controle de volume */}
+              {audioTrackRef && (
+                <AudioTrack trackRef={audioTrackRef} volume={currentVolume} />
+              )}
+
               {!isFullscreen && !currentState.isStopped && (
                 <>
                   <div className="absolute top-3 left-3 z-20 bg-[#1e1f22]/90 backdrop-blur-md border border-[#2b2d31] px-3 py-1.5 rounded-md flex items-center gap-2 text-xs">
@@ -292,7 +361,7 @@ export function ScreenShareArea() {
                   </div>
 
                   <button
-                    onClick={() => setFocusedTrackSid(trackRef.publication?.trackSid || null)}
+                    onClick={() => setFocusedParticipantId(identity)}
                     className="absolute top-3 right-3 z-20 p-2 rounded-md bg-[#1e1f22]/80 hover:bg-[#5865F2] text-white opacity-0 group-hover:opacity-100 transition-all cursor-pointer shadow-lg"
                     title="Expandir tela em foco"
                   >
@@ -304,7 +373,7 @@ export function ScreenShareArea() {
               {/* Conteúdo do Vídeo ou Overlay de Transmissão Pausada */}
               {currentState.isStopped ? (
                 <div
-                  onClick={() => handleResumeStream(trackSid, trackRef)}
+                  onClick={() => handleResumeStream(identity, vTrackPub, aTrackPub)}
                   className="w-full h-full flex flex-col items-center justify-center bg-[#111214]/95 text-center p-4 cursor-pointer group hover:bg-[#111214]/90 transition-all z-10"
                 >
                   <div className="w-12 h-12 rounded-full bg-[#5865F2] group-hover:scale-110 flex items-center justify-center text-white mb-2 shadow-xl transition-transform">
@@ -318,21 +387,25 @@ export function ScreenShareArea() {
               ) : (
                 <div className="w-full h-full flex items-center justify-center bg-black overflow-hidden relative">
                   <VideoTrack
-                    trackRef={trackRef}
+                    trackRef={vTrackRef}
                     className="w-full h-full object-contain max-h-full outline-none border-none ring-0 shadow-none overflow-hidden scale-[1.002]"
                   />
                 </div>
               )}
 
               {/* Menu de Contexto (Botão Direito) */}
-              {contextMenu && contextMenu.trackSid === trackSid && (
+              {contextMenu && contextMenu.participantIdentity === identity && (
                 <RenderContextMenu
                   position={contextMenu}
                   state={currentState}
                   participantName={participantName}
-                  onToggleMute={() => updateStreamState(trackSid, { isMuted: !currentState.isMuted })}
-                  onVolumeChange={(v) => updateStreamState(trackSid, { volume: v })}
-                  onStopStream={() => handleStopStream(trackSid, trackRef)}
+                  onToggleMute={() =>
+                    updateStreamState(identity, { isMuted: !currentState.isMuted }, vTrackPub, aTrackPub)
+                  }
+                  onVolumeChange={(v) =>
+                    updateStreamState(identity, { volume: v }, vTrackPub, aTrackPub)
+                  }
+                  onStopStream={() => handleStopStream(identity, vTrackPub, aTrackPub)}
                   onClose={() => setContextMenu(null)}
                   ref={menuRef}
                 />
