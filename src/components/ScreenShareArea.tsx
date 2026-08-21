@@ -48,6 +48,25 @@ export function ScreenShareArea() {
   const containerRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
+  const localIdentity = room?.localParticipant?.identity;
+
+  // Por padrão, transmissões remotas iniciam pausadas (isStopped: true) até que o usuário clique em "ASSISTIR".
+  // Apenas a transmissão local do próprio usuário abre ativa por padrão.
+  const getStreamState = useCallback(
+    (identity: string): StreamState => {
+      if (streamStates[identity]) {
+        return streamStates[identity];
+      }
+      const isLocal = identity === localIdentity;
+      return {
+        isMuted: false,
+        volume: 100,
+        isStopped: !isLocal,
+      };
+    },
+    [streamStates, localIdentity]
+  );
+
   const updateStreamState = useCallback(
     (
       identity: string,
@@ -56,7 +75,8 @@ export function ScreenShareArea() {
       aTrackPub?: any
     ) => {
       setStreamStates((prev) => {
-        const current = prev[identity] || { isMuted: false, volume: 100, isStopped: false };
+        const isLocal = identity === localIdentity;
+        const current = prev[identity] || { isMuted: false, volume: 100, isStopped: !isLocal };
         const nextState = { ...current, ...updates };
 
         // Aplica volume e mudo diretamente na faixa de áudio WebRTC se disponível
@@ -74,15 +94,15 @@ export function ScreenShareArea() {
         };
       });
     },
-    []
+    [localIdentity]
   );
 
-  // Retoma a transmissão ao clicar sobre a tela pausada ou pelo botão vermelho ASSISTIR
+  // Retoma e assiste a transmissão ao clicar sobre a tela ou no botão vermelho ASSISTIR
   const handleResumeStream = useCallback(
     (identity: string, vTrackPub?: any, aTrackPub?: any) => {
       updateStreamState(identity, { isStopped: false, isMuted: false }, vTrackPub, aTrackPub);
 
-      // Reinscreve usando LiveKit room.remoteParticipants diretamente se disponível
+      // Reinscreve usando LiveKit room.remoteParticipants diretamente
       if (room) {
         const remoteP = room.remoteParticipants.get(identity);
         if (remoteP) {
@@ -165,10 +185,6 @@ export function ScreenShareArea() {
     } catch (err) {
       console.error('Erro ao alternar tela cheia:', err);
     }
-  };
-
-  const getStreamState = (identity: string): StreamState => {
-    return streamStates[identity] || { isMuted: false, volume: 100, isStopped: false };
   };
 
   // Abre o menu de contexto no botão direito
@@ -300,17 +316,17 @@ export function ScreenShareArea() {
           className="w-full h-full flex items-center justify-center p-0 outline-none border-none ring-0 bg-black overflow-hidden relative cursor-pointer"
         >
           {currentState.isStopped ? (
-            /* Overlay de Transmissão Pausada (Clique para assistir de novo) */
+            /* Overlay de Transmissão Pausada / Clique para Assistir */
             <div
               onClick={() => handleResumeStream(identity, vTrackPub, aTrackPub)}
               className="w-full h-full flex flex-col items-center justify-center bg-[#111214]/95 text-center p-6 cursor-pointer group hover:bg-[#111214]/90 transition-all z-10"
             >
-              <div className="w-16 h-16 rounded-full bg-[#5865F2] group-hover:scale-110 flex items-center justify-center text-white mb-3 shadow-2xl transition-transform">
+              <div className="w-16 h-16 rounded-full bg-[#f23f43] group-hover:scale-110 flex items-center justify-center text-white mb-3 shadow-2xl transition-transform">
                 <Play className="w-8 h-8 fill-current ml-1" />
               </div>
-              <h4 className="text-lg font-bold text-white mb-1">Transmissão Pausada</h4>
+              <h4 className="text-lg font-bold text-white mb-1">Transmissão em Andamento</h4>
               <p className="text-xs text-[#949ba4] font-medium">
-                Clique em qualquer lugar da tela para assistir de novo
+                Clique aqui ou no botão vermelho <strong className="text-[#f23f43]">ASSISTIR</strong> na lista de membros para assistir
               </p>
             </div>
           ) : (
@@ -430,12 +446,12 @@ export function ScreenShareArea() {
                   onClick={() => handleResumeStream(identity, vTrackPub, aTrackPub)}
                   className="w-full h-full flex flex-col items-center justify-center bg-[#111214]/95 text-center p-4 cursor-pointer group hover:bg-[#111214]/90 transition-all z-10"
                 >
-                  <div className="w-12 h-12 rounded-full bg-[#5865F2] group-hover:scale-110 flex items-center justify-center text-white mb-2 shadow-xl transition-transform">
+                  <div className="w-12 h-12 rounded-full bg-[#f23f43] group-hover:scale-110 flex items-center justify-center text-white mb-2 shadow-xl transition-transform">
                     <Play className="w-6 h-6 fill-current ml-0.5" />
                   </div>
-                  <h5 className="text-sm font-bold text-white">Transmissão Pausada</h5>
+                  <h5 className="text-sm font-bold text-white">Transmissão de {participantName}</h5>
                   <p className="text-[11px] text-[#949ba4] mt-0.5">
-                    Clique para assistir de novo
+                    Clique aqui ou no botão vermelho <strong className="text-[#f23f43]">ASSISTIR</strong> na lista de membros
                   </p>
                 </div>
               ) : (
