@@ -1,10 +1,13 @@
 const { app, BrowserWindow, session, desktopCapturer, ipcMain } = require('electron');
 const path = require('path');
 
-// Desativa estritamente todas as APIs WGC de janela/tela do Windows para forçar a captura GDI/DXGI limpa (sem borda amarela)
+// Desativa os experimentos do Chromium que forçam a API WGC (borda amarela no Windows 10/11)
+app.commandLine.appendSwitch('disable-field-trial-config');
+
+// Desativa estritamente todas as variantes do Windows Graphics Capture
 app.commandLine.appendSwitch(
   'disable-features',
-  'WinGraphicsCapture,WinGraphicsCaptureWindow,WinGraphicsCaptureScreen,WebRtcAllowWgcScreenCapturer,WebRtcAllowWgcWindowCapturer,WebRtcAllowWgcDesktopCapturer,AllowWgcDesktopCapturer,MediaFoundationD3D11VideoCapture'
+  'WinGraphicsCapture,WinGraphicsCaptureWindow,WinGraphicsCaptureScreen,WebRtcAllowWgcScreenCapturer,WebRtcAllowWgcWindowCapturer,WebRtcAllowWgcDesktopCapturer,AllowWgcDesktopCapturer,MediaFoundationD3D11VideoCapture,WgcDesktopCapturer,WgcWindowCapturer'
 );
 app.commandLine.appendSwitch('enable-features', 'WebRtcAllowDxgiGdiCapturer,CanvasOopRasterization,UseSkiaRenderer');
 app.commandLine.appendSwitch('disable-wgc-capturer');
