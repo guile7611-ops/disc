@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { useTracks, VideoTrack, AudioTrack, TrackReference } from '@livekit/components-react';
+import { useTracks, VideoTrack, AudioTrack, TrackReference, useRoomContext } from '@livekit/components-react';
 import { Track, RemoteAudioTrack, RemoteTrackPublication } from 'livekit-client';
 import {
   Monitor,
@@ -30,6 +30,8 @@ interface ContextMenuPosition {
 }
 
 export function ScreenShareArea() {
+  const room = useRoomContext();
+
   // Faixas de Vídeo da Tela
   const videoTracks = useTracks([{ source: Track.Source.ScreenShare, withPlaceholder: false }]);
   // Faixas de Áudio da Tela
@@ -78,29 +80,33 @@ export function ScreenShareArea() {
   // Retoma a transmissão ao clicar sobre a tela pausada ou pelo botão vermelho ASSISTIR
   const handleResumeStream = useCallback(
     (identity: string, vTrackPub?: any, aTrackPub?: any) => {
-      updateStreamState(identity, { isStopped: false }, vTrackPub, aTrackPub);
+      updateStreamState(identity, { isStopped: false, isMuted: false }, vTrackPub, aTrackPub);
 
-      if (vTrackPub && typeof (vTrackPub as RemoteTrackPublication).setSubscribed === 'function') {
-        (vTrackPub as RemoteTrackPublication).setSubscribed(true);
-      } else {
-        const vt = videoTracks.find((t) => t.participant.identity === identity);
-        if (vt?.publication && typeof (vt.publication as RemoteTrackPublication).setSubscribed === 'function') {
-          (vt.publication as RemoteTrackPublication).setSubscribed(true);
+      // Reinscreve usando LiveKit room.remoteParticipants diretamente se disponível
+      if (room) {
+        const remoteP = room.remoteParticipants.get(identity);
+        if (remoteP) {
+          remoteP.trackPublications.forEach((pub) => {
+            if (
+              (pub.source === Track.Source.ScreenShare || pub.source === Track.Source.ScreenShareAudio) &&
+              typeof (pub as unknown as RemoteTrackPublication).setSubscribed === 'function'
+            ) {
+              (pub as unknown as RemoteTrackPublication).setSubscribed(true);
+            }
+          });
         }
       }
 
+      if (vTrackPub && typeof (vTrackPub as RemoteTrackPublication).setSubscribed === 'function') {
+        (vTrackPub as RemoteTrackPublication).setSubscribed(true);
+      }
       if (aTrackPub && typeof (aTrackPub as RemoteTrackPublication).setSubscribed === 'function') {
         (aTrackPub as RemoteTrackPublication).setSubscribed(true);
-      } else {
-        const at = audioTracks.find((t) => t.participant.identity === identity);
-        if (at?.publication && typeof (at.publication as RemoteTrackPublication).setSubscribed === 'function') {
-          (at.publication as RemoteTrackPublication).setSubscribed(true);
-        }
       }
 
       setFocusedParticipantId(identity);
     },
-    [updateStreamState, videoTracks, audioTracks]
+    [updateStreamState, room]
   );
 
   // Escuta o evento customizado 'resume-stream' disparado pelo botão vermelho ASSISTIR da lista de membros
@@ -179,6 +185,20 @@ export function ScreenShareArea() {
   // Parar de assistir a transmissão (Desliga Vídeo E Áudio)
   const handleStopStream = (identity: string, vTrackPub?: any, aTrackPub?: any) => {
     updateStreamState(identity, { isStopped: true }, vTrackPub, aTrackPub);
+
+    if (room) {
+      const remoteP = room.remoteParticipants.get(identity);
+      if (remoteP) {
+        remoteP.trackPublications.forEach((pub) => {
+          if (
+            (pub.source === Track.Source.ScreenShare || pub.source === Track.Source.ScreenShareAudio) &&
+            typeof (pub as unknown as RemoteTrackPublication).setSubscribed === 'function'
+          ) {
+            (pub as unknown as RemoteTrackPublication).setSubscribed(false);
+          }
+        });
+      }
+    }
 
     if (vTrackPub && typeof (vTrackPub as RemoteTrackPublication).setSubscribed === 'function') {
       (vTrackPub as RemoteTrackPublication).setSubscribed(false);

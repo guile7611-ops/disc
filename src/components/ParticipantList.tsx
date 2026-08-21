@@ -161,16 +161,17 @@ export function ParticipantList() {
                 </div>
               </div>
 
-              {/* Botão Vermelho ASSISTIR para Transmissão + Status do Microfone */}
+              {/* Botão Vermelho ASSISTIR Estático para Transmissão + Status do Microfone */}
               <div className="ml-2 shrink-0 flex items-center gap-1.5">
                 {isScreenSharing && (
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
+                      e.preventDefault();
                       handleWatchStream(p.identity);
                     }}
-                    className="px-2.5 py-1 rounded-md bg-[#f23f43] hover:bg-[#d83a3e] text-white text-[11px] font-extrabold flex items-center gap-1 transition-all shadow-md shadow-rose-950/40 animate-pulse cursor-pointer"
+                    className="px-2.5 py-1 rounded-md bg-[#f23f43] hover:bg-[#d83a3e] text-white text-[11px] font-extrabold flex items-center gap-1 transition-all shadow-md shadow-rose-950/40 cursor-pointer border border-[#f23f43]"
                     title="Assistir à transmissão ao vivo"
                   >
                     <Play className="w-3 h-3 fill-current" />
