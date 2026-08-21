@@ -1,6 +1,21 @@
 const { app, BrowserWindow, session, desktopCapturer, ipcMain } = require('electron');
 const path = require('path');
 
+// Flags de Desempenho e Eliminação Definitiva da Borda Amarela do Windows (Chromium 120+)
+app.commandLine.appendSwitch(
+  'disable-features',
+  'WinGraphicsCapture,WinGraphicsCaptureWindow,WinGraphicsCaptureScreen,WebRtcAllowWgcScreenCapturer,WebRtcAllowWgcWindowCapturer,MediaFoundationD3D11VideoCapture'
+);
+app.commandLine.appendSwitch('enable-features', 'WebRtcAllowDxgiGdiCapturer,CanvasOopRasterization,UseSkiaRenderer');
+
+// Flags de Desempenho do Chromium para Inicialização Instantânea e 60 FPS
+app.commandLine.appendSwitch('high-dpi-support', '1');
+app.commandLine.appendSwitch('force-device-scale-factor', '1');
+app.commandLine.appendSwitch('enable-usermedia-screen-capturing');
+app.commandLine.appendSwitch('enable-gpu-rasterization');
+app.commandLine.appendSwitch('enable-zero-copy');
+app.commandLine.appendSwitch('disk-cache-size', '104857600'); // 100MB cache de disco para abertura ultrarrápida
+
 let mainWindow;
 let pickerWindow = null;
 
@@ -14,12 +29,20 @@ function createWindow() {
     icon: path.join(__dirname, '../build/icon.ico'),
     autoHideMenuBar: true,
     backgroundColor: '#1e1f22',
+    show: false, // Oculta até que a janela esteja pronta para evitar tela branca/atraso
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
       webSecurity: true,
       backgroundThrottling: false,
     },
+  });
+
+  // Exibe a janela assim que o conteúdo inicial estiver pronto (resposta instantânea)
+  mainWindow.once('ready-to-show', () => {
+    if (mainWindow) {
+      mainWindow.show();
+    }
   });
 
   // Manipulador nativo de compartilhamento de tela com seletor de janelas e telas
@@ -103,16 +126,6 @@ function createWindow() {
     mainWindow = null;
   });
 }
-
-// Desativa o recurso WinGraphicsCapture do Windows para eliminar a borda amarela nativamente em janelas
-app.commandLine.appendSwitch('disable-features', 'WinGraphicsCapture,WinGraphicsCaptureBorder');
-
-// Flags de desempenho do Chromium para 60 FPS e captura nativa DXGI sem bordas
-app.commandLine.appendSwitch('high-dpi-support', '1');
-app.commandLine.appendSwitch('force-device-scale-factor', '1');
-app.commandLine.appendSwitch('enable-usermedia-screen-capturing');
-app.commandLine.appendSwitch('enable-gpu-rasterization');
-app.commandLine.appendSwitch('enable-zero-copy');
 
 app.whenReady().then(createWindow);
 
