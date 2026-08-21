@@ -7,6 +7,7 @@ import { ScreenShareArea } from '@/components/ScreenShareArea';
 import { ParticipantList } from '@/components/ParticipantList';
 import { ControlBar } from '@/components/ControlBar';
 import { AudioFallbackNotice } from '@/components/AudioFallbackNotice';
+import { useMicrophones } from '@/hooks/useMicrophones';
 
 interface RoomContainerProps {
   token: string;
@@ -15,6 +16,8 @@ interface RoomContainerProps {
 }
 
 export function RoomContainer({ token, wsUrl, onLeave }: RoomContainerProps) {
+  const { selectedDeviceId } = useMicrophones();
+
   return (
     <div className="fixed inset-0 w-screen h-screen bg-[#1e1f22] overflow-hidden select-none flex flex-col z-50">
       <LiveKitRoom
@@ -28,13 +31,14 @@ export function RoomContainer({ token, wsUrl, onLeave }: RoomContainerProps) {
           adaptiveStream: true, // Reduz uso de RAM/GPU em faixas não visíveis
           dynacast: true,       // Otimiza decodificação WebRTC dinamicamente
           publishDefaults: {
-            simulcast: false,   // Garante transmissão de 1080p Full HD pura sem downscaling
+            simulcast: false,   // Transmissão de 1080p Full HD pura sem downscaling
             screenShareEncoding: {
               maxBitrate: 10_000_000, // 10 Mbps de bitrate para qualidade Full HD 1080p 60 FPS nativa de jogos
               maxFramerate: 60,
             },
           },
           audioCaptureDefaults: {
+            deviceId: selectedDeviceId || undefined,
             echoCancellation: true,
             noiseSuppression: true,
             autoGainControl: true,

@@ -1,13 +1,16 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, Volume2, Square, VolumeX } from 'lucide-react';
+import { useMicrophones } from '@/hooks/useMicrophones';
+import { Mic, Volume2, Square, VolumeX, Settings2, Check } from 'lucide-react';
 
 export function VoiceTest() {
   const [isTesting, setIsTesting] = useState(false);
   const [volumeLevel, setVolumeLevel] = useState(0);
   const [hearFeedback, setHearFeedback] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const { devices, selectedDeviceId, setSelectedDeviceId, refreshDevices } = useMicrophones();
 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -32,23 +35,37 @@ export function VoiceTest() {
     setVolumeLevel(0);
   };
 
-  const startTest = async () => {
+  const startTest = async (overrideDeviceId?: string) => {
+    stopTest();
     setError(null);
+
+    const deviceToUse = overrideDeviceId || selectedDeviceId;
+
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
+      const constraints: MediaStreamConstraints = {
+        audio: deviceToUse
+          ? {
+              deviceId: { exact: deviceToUse },
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+            }
+          : {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+            },
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
 
-      const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const AudioContextClass =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       const audioCtx = new AudioContextClass();
       audioCtxRef.current = audioCtx;
 
-      // Se o áudio estivesse suspenso pelo navegador, retoma a execução
       if (audioCtx.state === 'suspended') {
         await audioCtx.resume();
       }
@@ -58,7 +75,6 @@ export function VoiceTest() {
       analyser.fftSize = 512;
       analyser.smoothingTimeConstant = 0.4;
 
-      // Nó de ganho para retorno de áudio nos alto-falantes/fones
       const gainNode = audioCtx.createGain();
       gainNode.gain.value = hearFeedback ? 1.0 : 0.0;
       gainNodeRef.current = gainNode;
@@ -72,7 +88,6 @@ export function VoiceTest() {
       const updateVolume = () => {
         analyser.getByteTimeDomainData(dataArray);
 
-        // Cálculo de RMS para alta sensibilidade de voz humana
         let sumSquares = 0;
         for (let i = 0; i < dataArray.length; i++) {
           const norm = (dataArray[i] - 128) / 128;
@@ -80,7 +95,6 @@ export function VoiceTest() {
         }
         const rms = Math.sqrt(sumSquares / dataArray.length);
 
-        // Escala amplificada para resposta visual instantânea (0 a 100%)
         const percentage = Math.min(100, Math.round(rms * 400));
         setVolumeLevel(percentage);
 
@@ -89,14 +103,22 @@ export function VoiceTest() {
 
       setIsTesting(true);
       updateVolume();
+      refreshDevices();
     } catch (err) {
       console.error('Erro ao iniciar teste de voz:', err);
-      setError('Permissão negada ou microfone não encontrado.');
+      setError('Não foi possível acessar o microfone selecionado.');
       stopTest();
     }
   };
 
-  // Atualiza o volume do retorno sem reiniciar o teste
+  const handleMicSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newId = e.target.value;
+    setSelectedDeviceId(newId);
+    if (isTesting) {
+      startTest(newId);
+    }
+  };
+
   const toggleHearFeedback = () => {
     const nextState = !hearFeedback;
     setHearFeedback(nextState);
@@ -112,17 +134,18 @@ export function VoiceTest() {
   }, []);
 
   return (
-    <div className="p-4 rounded-xl bg-[#1e1f22] border border-[#313338] space-y-3 select-none">
+    <div className="p-4 rounded-xl bg-[#1e1f22] border border-[#313338] space-y-4 select-none">
+      {/* Cabeçalho do Teste */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Mic className="w-4 h-4 text-[#5865F2]" />
           <h4 className="text-xs font-bold text-[#f2f3f5] uppercase tracking-wider">
-            Teste de Microfone & Retorno de Voz
+            Configuração e Teste de Microfone
           </h4>
         </div>
         <button
           type="button"
-          onClick={isTesting ? stopTest : startTest}
+          onClick={isTesting ? stopTest : () => startTest()}
           className={`px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
             isTesting
               ? 'bg-[#f23f43] hover:bg-[#d83a3e] text-white shadow-lg shadow-rose-950/40'
@@ -143,10 +166,39 @@ export function VoiceTest() {
         </button>
       </div>
 
+      {/* Seletor de Microfone */}
+      <div className="space-y-1.5">
+        <label htmlFor="mic-select" className="block text-[11px] font-bold text-[#949ba4] uppercase tracking-wider flex items-center gap-1">
+          <Settings2 className="w-3 h-3 text-[#5865F2]" />
+          Dispositivo de Entrada (Microfone)
+        </label>
+        <div className="relative">
+          <select
+            id="mic-select"
+            value={selectedDeviceId}
+            onChange={handleMicSelectChange}
+            className="w-full px-3 py-2 rounded-lg bg-[#2b2d31] border border-[#383a40] text-white text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#5865F2] focus:border-transparent appearance-none cursor-pointer pr-8 truncate"
+          >
+            {devices.length === 0 ? (
+              <option value="">Nenhum microfone encontrado</option>
+            ) : (
+              devices.map((device, index) => (
+                <option key={device.deviceId || index} value={device.deviceId}>
+                  {device.label || `Microfone ${index + 1}`}
+                </option>
+              ))
+            )}
+          </select>
+          <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-[#949ba4]">
+            ▼
+          </div>
+        </div>
+      </div>
+
       {/* Indicador de Nível de Entrada de Áudio (RMS Reativo) */}
       <div className="space-y-1">
         <div className="flex justify-between text-[11px] text-[#949ba4] font-medium">
-          <span>Sensibilidade do Microfone</span>
+          <span>Sensibilidade da Voz</span>
           <span className={volumeLevel > 5 ? 'text-[#23a55a] font-bold' : ''}>
             {isTesting ? `${volumeLevel}%` : 'Inativo'}
           </span>
@@ -169,11 +221,11 @@ export function VoiceTest() {
               onChange={toggleHearFeedback}
               className="w-4 h-4 rounded bg-[#2b2d31] border-[#383a40] text-[#5865F2] focus:ring-[#5865F2]"
             />
-            <span>Ouvir meu retorno de áudio nos fones</span>
+            <span>Ouvir meu retorno nos fones</span>
           </label>
           {hearFeedback ? (
             <span className="text-[11px] text-[#23a55a] font-medium flex items-center gap-1">
-              <Volume2 className="w-3 h-3 animate-pulse" /> Retorno Ativo
+              <Check className="w-3 h-3 text-[#23a55a]" /> Retorno Ativo
             </span>
           ) : (
             <span className="text-[11px] text-[#949ba4] flex items-center gap-1">

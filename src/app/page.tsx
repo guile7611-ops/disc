@@ -3,8 +3,10 @@
 import React, { useState } from 'react';
 import { HomeView } from '@/components/HomeView';
 import { RoomContainer } from '@/components/RoomContainer';
+import { LoadingScreen } from '@/components/LoadingScreen';
 
 export default function Page() {
+  const [isLoadingApp, setIsLoadingApp] = useState<boolean>(true);
   const [token, setToken] = useState<string | null>(null);
   const [wsUrl, setWsUrl] = useState<string | null>(null);
   const [isJoining, setIsJoining] = useState<boolean>(false);
@@ -50,21 +52,25 @@ export default function Page() {
     setWsUrl(null);
   };
 
-  if (token && wsUrl) {
-    return (
-      <RoomContainer
-        token={token}
-        wsUrl={wsUrl}
-        onLeave={handleLeaveRoom}
-      />
-    );
-  }
-
   return (
-    <HomeView
-      onJoinRoom={handleJoinRoom}
-      isJoining={isJoining}
-      joinError={joinError}
-    />
+    <>
+      {isLoadingApp && (
+        <LoadingScreen onFinished={() => setIsLoadingApp(false)} />
+      )}
+
+      {token && wsUrl ? (
+        <RoomContainer
+          token={token}
+          wsUrl={wsUrl}
+          onLeave={handleLeaveRoom}
+        />
+      ) : (
+        <HomeView
+          onJoinRoom={handleJoinRoom}
+          isJoining={isJoining}
+          joinError={joinError}
+        />
+      )}
+    </>
   );
 }
