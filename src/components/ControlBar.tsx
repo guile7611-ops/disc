@@ -5,6 +5,7 @@ import { useLocalParticipant, useRoomContext, useChat } from '@livekit/component
 import { Track } from 'livekit-client';
 import { useScreenShareSupport } from '@/hooks/useScreenShareSupport';
 import { useMicrophones } from '@/hooks/useMicrophones';
+import { useNoiseSuppression, NoiseSuppressionMode } from '@/hooks/useNoiseSuppression';
 import {
   Mic,
   MicOff,
@@ -17,6 +18,7 @@ import {
   Check,
   Settings,
   MessageSquare,
+  Sliders,
 } from 'lucide-react';
 
 interface ControlBarProps {
@@ -30,6 +32,7 @@ export function ControlBar({ onLeave, isChatOpen, onToggleChat }: ControlBarProp
   const { localParticipant, isMicrophoneEnabled, isScreenShareEnabled } = useLocalParticipant();
   const isScreenShareSupported = useScreenShareSupport();
   const { devices, selectedDeviceId, setSelectedDeviceId, refreshDevices } = useMicrophones();
+  const { mode: noiseMode, setMode: setNoiseMode, options: noiseOptions, getAudioConstraints } = useNoiseSuppression();
   const { chatMessages } = useChat();
 
   const [isMicLoading, setIsMicLoading] = useState(false);
@@ -55,10 +58,10 @@ export function ControlBar({ onLeave, isChatOpen, onToggleChat }: ControlBarProp
     setIsMicLoading(true);
     try {
       const nextState = !isMicrophoneEnabled;
+      const noiseConstraints = getAudioConstraints();
+
       await localParticipant.setMicrophoneEnabled(nextState, {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
+        ...noiseConstraints,
       });
     } catch (err) {
       console.error('Erro ao alternar microfone:', err);
@@ -69,13 +72,27 @@ export function ControlBar({ onLeave, isChatOpen, onToggleChat }: ControlBarProp
 
   const handleSelectMicrophone = async (deviceId: string) => {
     setSelectedDeviceId(deviceId);
-    setShowMicMenu(false);
 
     if (room) {
       try {
         await room.switchActiveDevice('audioinput', deviceId);
       } catch (err) {
         console.error('Erro ao alternar dispositivo no LiveKit:', err);
+      }
+    }
+  };
+
+  const handleNoiseModeSelect = async (modeId: NoiseSuppressionMode) => {
+    setNoiseMode(modeId);
+
+    // Se o microfone estiver ativo, reaplica os novos filtros de supressão de ruído no participante
+    if (localParticipant && isMicrophoneEnabled) {
+      try {
+        const noiseConstraints = getAudioConstraints();
+        await localParticipant.setMicrophoneEnabled(false);
+        await localParticipant.setMicrophoneEnabled(true, noiseConstraints);
+      } catch (e) {
+        console.error('Erro ao reaplicar supressão de ruído:', e);
       }
     }
   };
@@ -96,7 +113,6 @@ export function ControlBar({ onLeave, isChatOpen, onToggleChat }: ControlBarProp
         contentHint: 'motion',
       });
 
-      // Se ativou a transmissão, garante os parâmetros de bitrate e 60 FPS no sender WebRTC
       if (nextState) {
         setTimeout(() => {
           try {
@@ -106,7 +122,7 @@ export function ControlBar({ onLeave, isChatOpen, onToggleChat }: ControlBarProp
               if (sender && typeof sender.getParameters === 'function') {
                 const params = sender.getParameters();
                 if (params && params.encodings && params.encodings.length > 0) {
-                  params.encodings[0].maxBitrate = 10_000_000; // 10 Mbps Ultra HD
+                  params.encodings[0].maxBitrate = 10_000_000;
                   params.encodings[0].maxFramerate = 60;
                   params.degradationPreference = 'maintain-framerate';
                   sender.setParameters(params).catch(() => {});
@@ -119,10 +135,8 @@ export function ControlBar({ onLeave, isChatOpen, onToggleChat }: ControlBarProp
         }, 500);
       }
     } catch (err) {
-      // Se o usuário/amigo cancelar o seletor de tela (AbortError ou NotAllowedError), apenas ignora
       console.log('Seleção de tela cancelada ou recusada:', err);
     } finally {
-      // GARANTE 100% que o botão destrava e para de girar instantaneamente em caso de cancelamento!
       setIsScreenLoading(false);
     }
   };
@@ -156,7 +170,7 @@ export function ControlBar({ onLeave, isChatOpen, onToggleChat }: ControlBarProp
             Voz Conectada
           </p>
           <p className="text-[11px] text-[#949ba4] truncate max-w-36">
-            Sala principal / Full HD 60fps
+            Full HD 60fps / Filtro IA
           </p>
         </div>
       </div>
@@ -185,7 +199,7 @@ export function ControlBar({ onLeave, isChatOpen, onToggleChat }: ControlBarProp
               )}
             </button>
 
-            {/* Seta para abrir menu de microfones */}
+            {/* Seta para abrir menu de microfones e supressão de ruído */}
             <button
               onClick={() => {
                 refreshDevices();
@@ -196,7 +210,7 @@ export function ControlBar({ onLeave, isChatOpen, onToggleChat }: ControlBarProp
                   ? 'bg-[#313338] hover:bg-[#3b3e45] text-[#dbdee1] border-y border-r border-[#3f4248]'
                   : 'bg-[#f23f43] hover:bg-[#d83a3e] text-white'
               }`}
-              title="Selecionar Microfone"
+              title="Selecionar Microfone e Filtros de Ruído"
             >
               <ChevronUp className={`w-4 h-4 transition-transform duration-200 ${showMicMenu ? 'rotate-180' : ''}`} />
             </button>
@@ -206,36 +220,71 @@ export function ControlBar({ onLeave, isChatOpen, onToggleChat }: ControlBarProp
             </div>
           </div>
 
-          {/* Menu Suspenso de Seleção de Microfone em Tempo Real */}
+          {/* Menu Suspenso de Seleção de Microfone & Supressão de Ruído */}
           {showMicMenu && (
-            <div className="absolute bottom-full mb-3 left-0 w-72 bg-[#111214] border border-[#313338] rounded-xl p-2 shadow-2xl z-50 animate-in fade-in slide-in-from-bottom-2">
-              <div className="flex items-center gap-2 px-2 py-1.5 border-b border-[#2b2d31] mb-1">
-                <Settings className="w-3.5 h-3.5 text-[#5865F2]" />
-                <span className="text-xs font-bold text-[#b5bac1] uppercase tracking-wider">
-                  Selecione o Microfone
-                </span>
+            <div className="absolute bottom-full mb-3 left-0 w-80 bg-[#111214] border border-[#313338] rounded-xl p-3 shadow-2xl z-50 animate-in fade-in slide-in-from-bottom-2 space-y-3">
+              {/* Seção 1: Microfone */}
+              <div>
+                <div className="flex items-center gap-2 px-1 py-1 border-b border-[#2b2d31] mb-1.5">
+                  <Settings className="w-3.5 h-3.5 text-[#5865F2]" />
+                  <span className="text-[11px] font-bold text-[#b5bac1] uppercase tracking-wider">
+                    Dispositivo de Entrada
+                  </span>
+                </div>
+                <div className="max-h-32 overflow-y-auto space-y-1 pr-1">
+                  {devices.length === 0 ? (
+                    <p className="text-xs text-[#949ba4] p-2">Nenhum microfone encontrado</p>
+                  ) : (
+                    devices.map((device, idx) => (
+                      <button
+                        key={device.deviceId || idx}
+                        onClick={() => handleSelectMicrophone(device.deviceId)}
+                        className={`w-full flex items-center justify-between text-left px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+                          selectedDeviceId === device.deviceId
+                            ? 'bg-[#5865F2]/20 text-[#5865F2] font-bold'
+                            : 'text-[#dbdee1] hover:bg-[#2b2d31]'
+                        }`}
+                      >
+                        <span className="truncate pr-2">{device.label || `Microfone ${idx + 1}`}</span>
+                        {selectedDeviceId === device.deviceId && (
+                          <Check className="w-4 h-4 text-[#5865F2] shrink-0" />
+                        )}
+                      </button>
+                    ))
+                  )}
+                </div>
               </div>
-              <div className="max-h-48 overflow-y-auto space-y-1 pr-1">
-                {devices.length === 0 ? (
-                  <p className="text-xs text-[#949ba4] p-2">Nenhum microfone encontrado</p>
-                ) : (
-                  devices.map((device, idx) => (
-                    <button
-                      key={device.deviceId || idx}
-                      onClick={() => handleSelectMicrophone(device.deviceId)}
-                      className={`w-full flex items-center justify-between text-left px-2.5 py-2 rounded-lg text-xs font-medium transition-all cursor-pointer ${
-                        selectedDeviceId === device.deviceId
-                          ? 'bg-[#5865F2]/20 text-[#5865F2] font-bold'
-                          : 'text-[#dbdee1] hover:bg-[#2b2d31]'
-                      }`}
-                    >
-                      <span className="truncate pr-2">{device.label || `Microfone ${idx + 1}`}</span>
-                      {selectedDeviceId === device.deviceId && (
-                        <Check className="w-4 h-4 text-[#5865F2] shrink-0" />
-                      )}
-                    </button>
-                  ))
-                )}
+
+              {/* Seção 2: Supressão de Ruído (Filtro IA RNNoise / Nativo / Desativado) */}
+              <div>
+                <div className="flex items-center gap-2 px-1 py-1 border-b border-[#2b2d31] mb-1.5">
+                  <Sliders className="w-3.5 h-3.5 text-[#23a55a]" />
+                  <span className="text-[11px] font-bold text-[#b5bac1] uppercase tracking-wider">
+                    Supressão de Ruído
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 gap-1">
+                  {noiseOptions.map((opt) => {
+                    const isSelected = noiseMode === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        onClick={() => handleNoiseModeSelect(opt.id)}
+                        className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-all cursor-pointer flex items-center justify-between ${
+                          isSelected
+                            ? 'bg-[#23a55a]/20 border border-[#23a55a]/40 text-[#23a55a] font-bold'
+                            : 'text-[#dbdee1] hover:bg-[#2b2d31]'
+                        }`}
+                      >
+                        <div>
+                          <p className="text-xs font-bold leading-none">{opt.label}</p>
+                          <p className="text-[10px] text-[#949ba4] mt-0.5">{opt.description}</p>
+                        </div>
+                        {isSelected && <Check className="w-4 h-4 text-[#23a55a] shrink-0" />}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           )}

@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useMicrophones } from '@/hooks/useMicrophones';
-import { Mic, Volume2, Square, VolumeX, Settings2, Check } from 'lucide-react';
+import { useNoiseSuppression, NoiseSuppressionMode } from '@/hooks/useNoiseSuppression';
+import { Mic, Volume2, Square, VolumeX, Settings2, Check, Sliders } from 'lucide-react';
 
 export function VoiceTest() {
   const [isTesting, setIsTesting] = useState(false);
@@ -11,6 +12,7 @@ export function VoiceTest() {
   const [error, setError] = useState<string | null>(null);
 
   const { devices, selectedDeviceId, setSelectedDeviceId, refreshDevices } = useMicrophones();
+  const { mode: noiseMode, setMode: setNoiseMode, options: noiseOptions, getAudioConstraints } = useNoiseSuppression();
 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -40,20 +42,17 @@ export function VoiceTest() {
     setError(null);
 
     const deviceToUse = overrideDeviceId || selectedDeviceId;
+    const noiseConstraints = getAudioConstraints();
 
     try {
       const constraints: MediaStreamConstraints = {
         audio: deviceToUse
           ? {
               deviceId: { exact: deviceToUse },
-              echoCancellation: true,
-              noiseSuppression: true,
-              autoGainControl: true,
+              ...noiseConstraints,
             }
           : {
-              echoCancellation: true,
-              noiseSuppression: true,
-              autoGainControl: true,
+              ...noiseConstraints,
             },
       };
 
@@ -116,6 +115,13 @@ export function VoiceTest() {
     setSelectedDeviceId(newId);
     if (isTesting) {
       startTest(newId);
+    }
+  };
+
+  const handleNoiseModeChange = (newMode: NoiseSuppressionMode) => {
+    setNoiseMode(newMode);
+    if (isTesting) {
+      startTest();
     }
   };
 
@@ -195,8 +201,45 @@ export function VoiceTest() {
         </div>
       </div>
 
+      {/* Seletor de Níveis de Supressão de Ruído (IA RNNoise, Médio, Baixo, Desativado) */}
+      <div className="space-y-1.5 pt-1">
+        <label className="block text-[11px] font-bold text-[#949ba4] uppercase tracking-wider flex items-center gap-1">
+          <Sliders className="w-3 h-3 text-[#23a55a]" />
+          Nível de Supressão de Ruído (Filtro Anti-ruído)
+        </label>
+        <div className="grid grid-cols-2 gap-2">
+          {noiseOptions.map((opt) => {
+            const isSelected = noiseMode === opt.id;
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => handleNoiseModeChange(opt.id)}
+                className={`p-2.5 rounded-lg border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                  isSelected
+                    ? 'bg-[#5865F2]/20 border-[#5865F2] text-white shadow-md'
+                    : 'bg-[#2b2d31] border-[#383a40] text-[#dbdee1] hover:bg-[#35373c]'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-bold truncate">{opt.label}</span>
+                  <span
+                    className={`text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded ${
+                      isSelected ? 'bg-[#5865F2] text-white' : 'bg-[#1e1f22] text-[#949ba4]'
+                    }`}
+                  >
+                    {opt.badge}
+                  </span>
+                </div>
+                <p className="text-[10px] text-[#949ba4] leading-tight line-clamp-2">{opt.description}</p>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Indicador de Nível de Entrada de Áudio (RMS Reativo) */}
-      <div className="space-y-1">
+      <div className="space-y-1 pt-1">
         <div className="flex justify-between text-[11px] text-[#949ba4] font-medium">
           <span>Sensibilidade da Voz</span>
           <span className={volumeLevel > 5 ? 'text-[#23a55a] font-bold' : ''}>
