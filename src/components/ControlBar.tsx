@@ -2,10 +2,10 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useLocalParticipant, useRoomContext, useChat } from '@livekit/components-react';
+import { useKrispNoiseFilter } from '@livekit/components-react/krisp';
 import { Track } from 'livekit-client';
 import { useScreenShareSupport } from '@/hooks/useScreenShareSupport';
 import { useMicrophones } from '@/hooks/useMicrophones';
-import { useNoiseSuppression, NoiseSuppressionMode } from '@/hooks/useNoiseSuppression';
 import {
   Mic,
   MicOff,
@@ -18,7 +18,7 @@ import {
   Check,
   Settings,
   MessageSquare,
-  Sliders,
+  Sparkles,
 } from 'lucide-react';
 
 interface ControlBarProps {
@@ -32,8 +32,10 @@ export function ControlBar({ onLeave, isChatOpen, onToggleChat }: ControlBarProp
   const { localParticipant, isMicrophoneEnabled, isScreenShareEnabled } = useLocalParticipant();
   const isScreenShareSupported = useScreenShareSupport();
   const { devices, selectedDeviceId, setSelectedDeviceId, refreshDevices } = useMicrophones();
-  const { mode: noiseMode, setMode: setNoiseMode, options: noiseOptions, getAudioConstraints } = useNoiseSuppression();
   const { chatMessages } = useChat();
+
+  // Hook Oficial do Krisp Noise Filter da LiveKit
+  const { isNoiseFilterEnabled, isNoiseFilterPending, setNoiseFilterEnabled } = useKrispNoiseFilter();
 
   const [isMicLoading, setIsMicLoading] = useState(false);
   const [isScreenLoading, setIsScreenLoading] = useState(false);
@@ -58,10 +60,10 @@ export function ControlBar({ onLeave, isChatOpen, onToggleChat }: ControlBarProp
     setIsMicLoading(true);
     try {
       const nextState = !isMicrophoneEnabled;
-      const noiseConstraints = getAudioConstraints();
-
       await localParticipant.setMicrophoneEnabled(nextState, {
-        ...noiseConstraints,
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
       });
     } catch (err) {
       console.error('Erro ao alternar microfone:', err);
@@ -82,18 +84,12 @@ export function ControlBar({ onLeave, isChatOpen, onToggleChat }: ControlBarProp
     }
   };
 
-  const handleNoiseModeSelect = async (modeId: NoiseSuppressionMode) => {
-    setNoiseMode(modeId);
-
-    // Se o microfone estiver ativo, reaplica os novos filtros de supressão de ruído no participante
-    if (localParticipant && isMicrophoneEnabled) {
-      try {
-        const noiseConstraints = getAudioConstraints();
-        await localParticipant.setMicrophoneEnabled(false);
-        await localParticipant.setMicrophoneEnabled(true, noiseConstraints);
-      } catch (e) {
-        console.error('Erro ao reaplicar supressão de ruído:', e);
-      }
+  const toggleKrispNoiseFilter = async () => {
+    if (isNoiseFilterPending) return;
+    try {
+      await setNoiseFilterEnabled(!isNoiseFilterEnabled);
+    } catch (err) {
+      console.error('Erro ao alternar supressão de ruído Krisp:', err);
     }
   };
 
@@ -169,8 +165,11 @@ export function ControlBar({ onLeave, isChatOpen, onToggleChat }: ControlBarProp
             <span className="w-2 h-2 rounded-full bg-[#23a55a] animate-ping" />
             Voz Conectada
           </p>
-          <p className="text-[11px] text-[#949ba4] truncate max-w-36">
-            Full HD 60fps / Filtro IA
+          <p className="text-[11px] text-[#949ba4] truncate max-w-40 flex items-center gap-1">
+            <span>Full HD 60fps</span>
+            {isNoiseFilterEnabled && (
+              <span className="text-[#23a55a] font-extrabold text-[10px]">/ Krisp AI</span>
+            )}
           </p>
         </div>
       </div>
@@ -199,7 +198,7 @@ export function ControlBar({ onLeave, isChatOpen, onToggleChat }: ControlBarProp
               )}
             </button>
 
-            {/* Seta para abrir menu de microfones e supressão de ruído */}
+            {/* Seta para abrir menu de microfones e Krisp */}
             <button
               onClick={() => {
                 refreshDevices();
@@ -210,7 +209,7 @@ export function ControlBar({ onLeave, isChatOpen, onToggleChat }: ControlBarProp
                   ? 'bg-[#313338] hover:bg-[#3b3e45] text-[#dbdee1] border-y border-r border-[#3f4248]'
                   : 'bg-[#f23f43] hover:bg-[#d83a3e] text-white'
               }`}
-              title="Selecionar Microfone e Filtros de Ruído"
+              title="Configurações de Microfone e Krisp AI"
             >
               <ChevronUp className={`w-4 h-4 transition-transform duration-200 ${showMicMenu ? 'rotate-180' : ''}`} />
             </button>
@@ -220,7 +219,7 @@ export function ControlBar({ onLeave, isChatOpen, onToggleChat }: ControlBarProp
             </div>
           </div>
 
-          {/* Menu Suspenso de Seleção de Microfone & Supressão de Ruído */}
+          {/* Menu Suspenso de Seleção de Microfone & Krisp AI */}
           {showMicMenu && (
             <div className="absolute bottom-full mb-3 left-0 w-80 bg-[#111214] border border-[#313338] rounded-xl p-3 shadow-2xl z-50 animate-in fade-in slide-in-from-bottom-2 space-y-3">
               {/* Seção 1: Microfone */}
@@ -255,39 +254,94 @@ export function ControlBar({ onLeave, isChatOpen, onToggleChat }: ControlBarProp
                 </div>
               </div>
 
-              {/* Seção 2: Supressão de Ruído (Filtro IA RNNoise / Nativo / Desativado) */}
+              {/* Seção 2: Supressão de Ruído Krisp AI (Botão Ativar / Desativar) */}
               <div>
-                <div className="flex items-center gap-2 px-1 py-1 border-b border-[#2b2d31] mb-1.5">
-                  <Sliders className="w-3.5 h-3.5 text-[#23a55a]" />
-                  <span className="text-[11px] font-bold text-[#b5bac1] uppercase tracking-wider">
-                    Supressão de Ruído
+                <div className="flex items-center justify-between px-1 py-1 border-b border-[#2b2d31] mb-2">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-3.5 h-3.5 text-[#23a55a]" />
+                    <span className="text-[11px] font-bold text-[#b5bac1] uppercase tracking-wider">
+                      Supressão de Ruído Krisp AI
+                    </span>
+                  </div>
+                  <span
+                    className={`text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded ${
+                      isNoiseFilterEnabled
+                        ? 'bg-[#23a55a] text-white'
+                        : 'bg-[#1e1f22] text-[#949ba4]'
+                    }`}
+                  >
+                    {isNoiseFilterEnabled ? 'Ativada' : 'Desativada'}
                   </span>
                 </div>
-                <div className="grid grid-cols-1 gap-1">
-                  {noiseOptions.map((opt) => {
-                    const isSelected = noiseMode === opt.id;
-                    return (
-                      <button
-                        key={opt.id}
-                        onClick={() => handleNoiseModeSelect(opt.id)}
-                        className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-all cursor-pointer flex items-center justify-between ${
-                          isSelected
-                            ? 'bg-[#23a55a]/20 border border-[#23a55a]/40 text-[#23a55a] font-bold'
-                            : 'text-[#dbdee1] hover:bg-[#2b2d31]'
-                        }`}
-                      >
-                        <div>
-                          <p className="text-xs font-bold leading-none">{opt.label}</p>
-                          <p className="text-[10px] text-[#949ba4] mt-0.5">{opt.description}</p>
-                        </div>
-                        {isSelected && <Check className="w-4 h-4 text-[#23a55a] shrink-0" />}
-                      </button>
-                    );
-                  })}
-                </div>
+
+                <button
+                  type="button"
+                  disabled={isNoiseFilterPending}
+                  onClick={toggleKrispNoiseFilter}
+                  className={`w-full py-2.5 px-3 rounded-lg border text-xs font-bold transition-all cursor-pointer flex items-center justify-between shadow-md ${
+                    isNoiseFilterEnabled
+                      ? 'bg-[#23a55a]/20 border-[#23a55a] text-[#23a55a] hover:bg-[#23a55a]/30'
+                      : 'bg-[#2b2d31] border-[#383a40] text-[#dbdee1] hover:bg-[#35373c]'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    {isNoiseFilterPending ? (
+                      <Loader2 className="w-4 h-4 animate-spin text-[#5865F2]" />
+                    ) : (
+                      <Sparkles className={`w-4 h-4 ${isNoiseFilterEnabled ? 'text-[#23a55a]' : 'text-[#949ba4]'}`} />
+                    )}
+                    <span>
+                      {isNoiseFilterPending
+                        ? 'Carregando Krisp...'
+                        : isNoiseFilterEnabled
+                        ? 'Supressão Krisp AI Ativada'
+                        : 'Ativar Supressão Krisp AI'}
+                    </span>
+                  </div>
+                  <div
+                    className={`w-9 h-5 rounded-full p-0.5 transition-colors ${
+                      isNoiseFilterEnabled ? 'bg-[#23a55a]' : 'bg-[#383a40]'
+                    }`}
+                  >
+                    <div
+                      className={`w-4 h-4 rounded-full bg-white transition-transform ${
+                        isNoiseFilterEnabled ? 'translate-x-4' : 'translate-x-0'
+                      }`}
+                    />
+                  </div>
+                </button>
+                <p className="text-[10px] text-[#949ba4] mt-1.5 px-1">
+                  Remove automaticamente latidos, teclados, fãs e ruídos ambiente usando Krisp AI.
+                </p>
               </div>
             </div>
           )}
+        </div>
+
+        {/* Botão Dedicado Krisp AI na Barra Central (Ativar / Desativar Rápido) */}
+        <div className="relative group">
+          <button
+            onClick={toggleKrispNoiseFilter}
+            disabled={isNoiseFilterPending}
+            className={`h-12 px-3.5 rounded-full flex items-center gap-2 transition-all cursor-pointer border text-xs font-bold ${
+              isNoiseFilterEnabled
+                ? 'bg-[#23a55a]/20 border-[#23a55a] text-[#23a55a] shadow-lg shadow-emerald-950/40'
+                : 'bg-[#313338] hover:bg-[#3b3e45] border-[#3f4248] text-[#dbdee1]'
+            }`}
+            aria-label="Ativar ou desativar supressão de ruído Krisp AI"
+          >
+            {isNoiseFilterPending ? (
+              <Loader2 className="w-4 h-4 animate-spin text-[#5865F2]" />
+            ) : (
+              <Sparkles className={`w-4 h-4 ${isNoiseFilterEnabled ? 'text-[#23a55a] animate-pulse' : 'text-[#949ba4]'}`} />
+            )}
+            <span className="hidden lg:inline">
+              {isNoiseFilterEnabled ? 'Krisp On' : 'Krisp Off'}
+            </span>
+          </button>
+          <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block bg-[#111214] text-[#dbdee1] text-xs px-3 py-1.5 rounded-md border border-[#2b2d31] whitespace-nowrap shadow-xl">
+            {isNoiseFilterEnabled ? 'Desativar Supressão Krisp AI' : 'Ativar Supressão Krisp AI'}
+          </div>
         </div>
 
         {/* Botão Compartilhar Tela (Full HD 1080p 60 FPS) */}
