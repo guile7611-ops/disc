@@ -2,8 +2,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useMicrophones } from '@/hooks/useMicrophones';
-import { useNoiseSuppression, NoiseSuppressionMode } from '@/hooks/useNoiseSuppression';
-import { Mic, Volume2, Square, VolumeX, Settings2, Check, Sliders } from 'lucide-react';
+import { useSpeakers } from '@/hooks/useSpeakers';
+import { Mic, Volume2, Square, VolumeX, Settings2, Volume1, Check } from 'lucide-react';
 
 export function VoiceTest() {
   const [isTesting, setIsTesting] = useState(false);
@@ -12,7 +12,7 @@ export function VoiceTest() {
   const [error, setError] = useState<string | null>(null);
 
   const { devices, selectedDeviceId, setSelectedDeviceId, refreshDevices } = useMicrophones();
-  const { mode: noiseMode, setMode: setNoiseMode, options: noiseOptions, getAudioConstraints } = useNoiseSuppression();
+  const { speakerDevices, selectedSpeakerId, setSelectedSpeakerId, refreshSpeakers } = useSpeakers();
 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -42,17 +42,20 @@ export function VoiceTest() {
     setError(null);
 
     const deviceToUse = overrideDeviceId || selectedDeviceId;
-    const noiseConstraints = getAudioConstraints();
 
     try {
       const constraints: MediaStreamConstraints = {
         audio: deviceToUse
           ? {
               deviceId: { exact: deviceToUse },
-              ...noiseConstraints,
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
             }
           : {
-              ...noiseConstraints,
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
             },
       };
 
@@ -103,6 +106,7 @@ export function VoiceTest() {
       setIsTesting(true);
       updateVolume();
       refreshDevices();
+      refreshSpeakers();
     } catch (err) {
       console.error('Erro ao iniciar teste de voz:', err);
       setError('Não foi possível acessar o microfone selecionado.');
@@ -118,11 +122,9 @@ export function VoiceTest() {
     }
   };
 
-  const handleNoiseModeChange = (newMode: NoiseSuppressionMode) => {
-    setNoiseMode(newMode);
-    if (isTesting) {
-      startTest();
-    }
+  const handleSpeakerSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newId = e.target.value;
+    setSelectedSpeakerId(newId);
   };
 
   const toggleHearFeedback = () => {
@@ -146,7 +148,7 @@ export function VoiceTest() {
         <div className="flex items-center gap-2">
           <Mic className="w-4 h-4 text-[#5865F2]" />
           <h4 className="text-xs font-bold text-[#f2f3f5] uppercase tracking-wider">
-            Configuração e Teste de Microfone
+            Configuração de Áudio (Entrada e Saída)
           </h4>
         </div>
         <button
@@ -172,7 +174,7 @@ export function VoiceTest() {
         </button>
       </div>
 
-      {/* Seletor de Microfone */}
+      {/* Seletor de Microfone (Dispositivo de Entrada) */}
       <div className="space-y-1.5">
         <label htmlFor="mic-select" className="block text-[11px] font-bold text-[#949ba4] uppercase tracking-wider flex items-center gap-1">
           <Settings2 className="w-3 h-3 text-[#5865F2]" />
@@ -201,40 +203,32 @@ export function VoiceTest() {
         </div>
       </div>
 
-      {/* Seletor de Níveis de Supressão de Ruído (IA RNNoise, Médio, Baixo, Desativado) */}
-      <div className="space-y-1.5 pt-1">
-        <label className="block text-[11px] font-bold text-[#949ba4] uppercase tracking-wider flex items-center gap-1">
-          <Sliders className="w-3 h-3 text-[#23a55a]" />
-          Nível de Supressão de Ruído (Filtro Anti-ruído)
+      {/* Seletor de Alto-falante / Fones (Dispositivo de Saída) */}
+      <div className="space-y-1.5">
+        <label htmlFor="speaker-select" className="block text-[11px] font-bold text-[#949ba4] uppercase tracking-wider flex items-center gap-1">
+          <Volume1 className="w-3 h-3 text-[#23a55a]" />
+          Dispositivo de Saída (Alto-falantes / Fones)
         </label>
-        <div className="grid grid-cols-2 gap-2">
-          {noiseOptions.map((opt) => {
-            const isSelected = noiseMode === opt.id;
-            return (
-              <button
-                key={opt.id}
-                type="button"
-                onClick={() => handleNoiseModeChange(opt.id)}
-                className={`p-2.5 rounded-lg border text-left transition-all cursor-pointer flex flex-col justify-between ${
-                  isSelected
-                    ? 'bg-[#5865F2]/20 border-[#5865F2] text-white shadow-md'
-                    : 'bg-[#2b2d31] border-[#383a40] text-[#dbdee1] hover:bg-[#35373c]'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-bold truncate">{opt.label}</span>
-                  <span
-                    className={`text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded ${
-                      isSelected ? 'bg-[#5865F2] text-white' : 'bg-[#1e1f22] text-[#949ba4]'
-                    }`}
-                  >
-                    {opt.badge}
-                  </span>
-                </div>
-                <p className="text-[10px] text-[#949ba4] leading-tight line-clamp-2">{opt.description}</p>
-              </button>
-            );
-          })}
+        <div className="relative">
+          <select
+            id="speaker-select"
+            value={selectedSpeakerId}
+            onChange={handleSpeakerSelectChange}
+            className="w-full px-3 py-2 rounded-lg bg-[#2b2d31] border border-[#383a40] text-white text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#23a55a] focus:border-transparent appearance-none cursor-pointer pr-8 truncate"
+          >
+            {speakerDevices.length === 0 ? (
+              <option value="">Dispositivo Padrão do Sistema</option>
+            ) : (
+              speakerDevices.map((device, index) => (
+                <option key={device.deviceId || index} value={device.deviceId}>
+                  {device.label || `Saída de Áudio ${index + 1}`}
+                </option>
+              ))
+            )}
+          </select>
+          <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-[#949ba4]">
+            ▼
+          </div>
         </div>
       </div>
 

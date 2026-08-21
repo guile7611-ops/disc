@@ -6,6 +6,7 @@ import { useKrispNoiseFilter } from '@livekit/components-react/krisp';
 import { Track } from 'livekit-client';
 import { useScreenShareSupport } from '@/hooks/useScreenShareSupport';
 import { useMicrophones } from '@/hooks/useMicrophones';
+import { useSpeakers } from '@/hooks/useSpeakers';
 import {
   Mic,
   MicOff,
@@ -14,6 +15,7 @@ import {
   PhoneOff,
   Loader2,
   Volume2,
+  Volume1,
   ChevronUp,
   Check,
   Settings,
@@ -32,6 +34,7 @@ export function ControlBar({ onLeave, isChatOpen, onToggleChat }: ControlBarProp
   const { localParticipant, isMicrophoneEnabled, isScreenShareEnabled } = useLocalParticipant();
   const isScreenShareSupported = useScreenShareSupport();
   const { devices, selectedDeviceId, setSelectedDeviceId, refreshDevices } = useMicrophones();
+  const { speakerDevices, selectedSpeakerId, setSelectedSpeakerId, refreshSpeakers } = useSpeakers();
   const { chatMessages } = useChat();
 
   // Hook Oficial do Krisp Noise Filter da LiveKit
@@ -79,7 +82,19 @@ export function ControlBar({ onLeave, isChatOpen, onToggleChat }: ControlBarProp
       try {
         await room.switchActiveDevice('audioinput', deviceId);
       } catch (err) {
-        console.error('Erro ao alternar dispositivo no LiveKit:', err);
+        console.error('Erro ao alternar microfone no LiveKit:', err);
+      }
+    }
+  };
+
+  const handleSelectSpeaker = async (deviceId: string) => {
+    setSelectedSpeakerId(deviceId);
+
+    if (room) {
+      try {
+        await room.switchActiveDevice('audiooutput', deviceId);
+      } catch (err) {
+        console.error('Erro ao alternar saída de áudio no LiveKit:', err);
       }
     }
   };
@@ -142,7 +157,7 @@ export function ControlBar({ onLeave, isChatOpen, onToggleChat }: ControlBarProp
     onLeave();
   };
 
-  // Fecha o menu de microfones se clicar fora
+  // Fecha o menu se clicar fora
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
@@ -198,10 +213,11 @@ export function ControlBar({ onLeave, isChatOpen, onToggleChat }: ControlBarProp
               )}
             </button>
 
-            {/* Seta para abrir menu de microfones e Krisp */}
+            {/* Seta para abrir menu de microfones, alto-falantes e Krisp AI */}
             <button
               onClick={() => {
                 refreshDevices();
+                refreshSpeakers();
                 setShowMicMenu((prev) => !prev);
               }}
               className={`h-12 px-2 rounded-r-full flex items-center justify-center border-l border-[#383a40] transition-all cursor-pointer ${
@@ -209,7 +225,7 @@ export function ControlBar({ onLeave, isChatOpen, onToggleChat }: ControlBarProp
                   ? 'bg-[#313338] hover:bg-[#3b3e45] text-[#dbdee1] border-y border-r border-[#3f4248]'
                   : 'bg-[#f23f43] hover:bg-[#d83a3e] text-white'
               }`}
-              title="Configurações de Microfone e Krisp AI"
+              title="Configurações de Entrada, Saída e Krisp AI"
             >
               <ChevronUp className={`w-4 h-4 transition-transform duration-200 ${showMicMenu ? 'rotate-180' : ''}`} />
             </button>
@@ -219,18 +235,18 @@ export function ControlBar({ onLeave, isChatOpen, onToggleChat }: ControlBarProp
             </div>
           </div>
 
-          {/* Menu Suspenso de Seleção de Microfone & Krisp AI */}
+          {/* Menu Suspenso de Seleção de Entrada, Saída e Krisp AI */}
           {showMicMenu && (
             <div className="absolute bottom-full mb-3 left-0 w-80 bg-[#111214] border border-[#313338] rounded-xl p-3 shadow-2xl z-50 animate-in fade-in slide-in-from-bottom-2 space-y-3">
-              {/* Seção 1: Microfone */}
+              {/* Seção 1: Microfone (Entrada) */}
               <div>
                 <div className="flex items-center gap-2 px-1 py-1 border-b border-[#2b2d31] mb-1.5">
                   <Settings className="w-3.5 h-3.5 text-[#5865F2]" />
                   <span className="text-[11px] font-bold text-[#b5bac1] uppercase tracking-wider">
-                    Dispositivo de Entrada
+                    Microfone (Dispositivo de Entrada)
                   </span>
                 </div>
-                <div className="max-h-32 overflow-y-auto space-y-1 pr-1">
+                <div className="max-h-28 overflow-y-auto space-y-1 pr-1">
                   {devices.length === 0 ? (
                     <p className="text-xs text-[#949ba4] p-2">Nenhum microfone encontrado</p>
                   ) : (
@@ -254,13 +270,45 @@ export function ControlBar({ onLeave, isChatOpen, onToggleChat }: ControlBarProp
                 </div>
               </div>
 
-              {/* Seção 2: Supressão de Ruído Krisp AI (Botão Ativar / Desativar) */}
+              {/* Seção 2: Alto-falantes / Fones (Saída) */}
+              <div>
+                <div className="flex items-center gap-2 px-1 py-1 border-b border-[#2b2d31] mb-1.5">
+                  <Volume1 className="w-3.5 h-3.5 text-[#23a55a]" />
+                  <span className="text-[11px] font-bold text-[#b5bac1] uppercase tracking-wider">
+                    Alto-falantes / Fones (Dispositivo de Saída)
+                  </span>
+                </div>
+                <div className="max-h-28 overflow-y-auto space-y-1 pr-1">
+                  {speakerDevices.length === 0 ? (
+                    <p className="text-xs text-[#949ba4] p-2">Saída padrão do sistema</p>
+                  ) : (
+                    speakerDevices.map((device, idx) => (
+                      <button
+                        key={device.deviceId || idx}
+                        onClick={() => handleSelectSpeaker(device.deviceId)}
+                        className={`w-full flex items-center justify-between text-left px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+                          selectedSpeakerId === device.deviceId
+                            ? 'bg-[#23a55a]/20 text-[#23a55a] font-bold'
+                            : 'text-[#dbdee1] hover:bg-[#2b2d31]'
+                        }`}
+                      >
+                        <span className="truncate pr-2">{device.label || `Saída ${idx + 1}`}</span>
+                        {selectedSpeakerId === device.deviceId && (
+                          <Check className="w-4 h-4 text-[#23a55a] shrink-0" />
+                        )}
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Seção 3: Supressão de Ruído Krisp AI (Botão Ativar / Desativar) */}
               <div>
                 <div className="flex items-center justify-between px-1 py-1 border-b border-[#2b2d31] mb-2">
                   <div className="flex items-center gap-2">
                     <Sparkles className="w-3.5 h-3.5 text-[#23a55a]" />
                     <span className="text-[11px] font-bold text-[#b5bac1] uppercase tracking-wider">
-                      Supressão de Ruído Krisp AI
+                      Supressão Krisp AI
                     </span>
                   </div>
                   <span
@@ -278,7 +326,7 @@ export function ControlBar({ onLeave, isChatOpen, onToggleChat }: ControlBarProp
                   type="button"
                   disabled={isNoiseFilterPending}
                   onClick={toggleKrispNoiseFilter}
-                  className={`w-full py-2.5 px-3 rounded-lg border text-xs font-bold transition-all cursor-pointer flex items-center justify-between shadow-md ${
+                  className={`w-full py-2 px-3 rounded-lg border text-xs font-bold transition-all cursor-pointer flex items-center justify-between shadow-md ${
                     isNoiseFilterEnabled
                       ? 'bg-[#23a55a]/20 border-[#23a55a] text-[#23a55a] hover:bg-[#23a55a]/30'
                       : 'bg-[#2b2d31] border-[#383a40] text-[#dbdee1] hover:bg-[#35373c]'
@@ -310,9 +358,6 @@ export function ControlBar({ onLeave, isChatOpen, onToggleChat }: ControlBarProp
                     />
                   </div>
                 </button>
-                <p className="text-[10px] text-[#949ba4] mt-1.5 px-1">
-                  Remove automaticamente latidos, teclados, fãs e ruídos ambiente usando Krisp AI.
-                </p>
               </div>
             </div>
           )}
