@@ -1,7 +1,7 @@
 const { app, BrowserWindow, session, desktopCapturer, ipcMain } = require('electron');
 const path = require('path');
 
-// Desativa os experimentos do Chromium que forçam a API WGC (borda amarela no Windows 10/11)
+// Desativa experimentos do Chromium para garantir o bloqueio estrito da API WGC do Windows 10/11
 app.commandLine.appendSwitch('disable-field-trial-config');
 
 // Desativa estritamente todas as variantes do Windows Graphics Capture
@@ -13,13 +13,12 @@ app.commandLine.appendSwitch('enable-features', 'WebRtcAllowDxgiGdiCapturer,Canv
 app.commandLine.appendSwitch('disable-wgc-capturer');
 app.commandLine.appendSwitch('disable-wgc-window-capturer');
 
-// Flags de Desempenho do Chromium para Inicialização Instantânea e 60 FPS
+// Flags de Desempenho do Chromium para 60 FPS e inicialização fluida
 app.commandLine.appendSwitch('high-dpi-support', '1');
 app.commandLine.appendSwitch('force-device-scale-factor', '1');
 app.commandLine.appendSwitch('enable-usermedia-screen-capturing');
 app.commandLine.appendSwitch('enable-gpu-rasterization');
 app.commandLine.appendSwitch('enable-zero-copy');
-app.commandLine.appendSwitch('disk-cache-size', '104857600'); // 100MB cache de disco para abertura ultrarrápida
 
 let mainWindow;
 let pickerWindow = null;
