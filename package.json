@@ -1,12 +1,48 @@
 {
-  "name": "dc",
-  "version": "0.1.0",
+  "name": "sala-principal",
+  "version": "1.0.0",
+  "description": "Aplicativo Desktop de Chamada de Voz e Compartilhamento de Tela 60 FPS",
+  "author": "guile7611",
   "private": true,
+  "main": "electron/main.js",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "electron:start": "electron .",
+    "dist": "electron-builder --win portable nsis"
+  },
+  "build": {
+    "appId": "com.dc.salaprincipal",
+    "productName": "Sala Principal",
+    "asar": true,
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "electron/**/*",
+      "build/**/*",
+      "!node_modules/**/*"
+    ],
+    "win": {
+      "target": [
+        "portable",
+        "nsis"
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Sala Principal"
+    },
+    "portable": {
+      "artifactName": "Sala Principal.exe"
+    }
   },
   "dependencies": {
     "@livekit/components-react": "^2.8.1",
@@ -23,8 +59,12 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "electron": "^34.3.0",
+    "electron-builder": "^25.1.8",
     "eslint": "^9",
     "eslint-config-next": "16.3.1",
+    "png-to-ico": "^2.1.8",
+    "sharp": "^0.33.5",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
