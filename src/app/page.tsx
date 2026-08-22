@@ -47,9 +47,12 @@ export default function Page() {
     }
   };
 
-  const handleLeaveRoom = () => {
+  const handleLeaveRoom = (reason?: string) => {
     setToken(null);
     setWsUrl(null);
+    if (reason) {
+      setJoinError(reason);
+    }
   };
 
   return (

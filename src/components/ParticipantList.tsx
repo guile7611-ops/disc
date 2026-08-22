@@ -22,7 +22,7 @@ export function ParticipantList() {
 
   const handleContextMenu = (e: React.MouseEvent, p: RemoteParticipant) => {
     e.preventDefault();
-    if (p.identity === localParticipant.identity) return; // Não abre menu de volume para si mesmo
+    if (!localParticipant || p.identity === localParticipant?.identity) return; // Não abre menu de volume para si mesmo
 
     setContextMenu({
       x: e.clientX,
@@ -83,7 +83,7 @@ export function ParticipantList() {
       {/* Lista de Participantes */}
       <div className="flex-1 overflow-y-auto p-2 space-y-1">
         {participants.map((p) => {
-          const isLocal = p.identity === localParticipant.identity;
+          const isLocal = !!localParticipant && p.identity === localParticipant.identity;
           const isMicEnabled = p.isMicrophoneEnabled;
           const isSpeaking = p.isSpeaking;
           const isScreenSharing =

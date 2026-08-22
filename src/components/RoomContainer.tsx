@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
-import { LiveKitRoom, useTracks, AudioTrack } from '@livekit/components-react';
+import React, { useState, useEffect } from 'react';
+import { LiveKitRoom, useTracks, AudioTrack, useLocalParticipant } from '@livekit/components-react';
 import { Track } from 'livekit-client';
 import { RoomHeader } from '@/components/RoomHeader';
 import { ScreenShareArea } from '@/components/ScreenShareArea';
@@ -15,7 +15,7 @@ import { useDuckSound } from '@/hooks/useDuckSound';
 interface RoomContainerProps {
   token: string;
   wsUrl: string;
-  onLeave: () => void;
+  onLeave: (reason?: string) => void;
 }
 
 // Renderizador de áudio exclusivo para microfones de voz remotos
@@ -41,12 +41,26 @@ function VoiceAudioRenderer({ isDeafened }: { isDeafened: boolean }) {
 }
 
 // Subcomponente interno para ter acesso ao contexto da sala LiveKit e ativar o efeito sonoro de pato
-function RoomInnerContent({ onLeave }: { onLeave: () => void }) {
+function RoomInnerContent({ onLeave }: { onLeave: (reason?: string) => void }) {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isDeafened, setIsDeafened] = useState(false);
+  const { localParticipant } = useLocalParticipant();
   
   // Ativa automaticamente o som de pato ("Quack!") quando alguém entra ou sai
   useDuckSound();
+
+  // Ativa o microfone de forma suave após a conexão estabelecida sem derrubar a sala se falhar
+  useEffect(() => {
+    if (localParticipant && !localParticipant.isMicrophoneEnabled) {
+      localParticipant.setMicrophoneEnabled(true, {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      }).catch((err) => {
+        console.warn('Aviso: microfone não iniciado automaticamente (pode ser ativado pelo botão):', err);
+      });
+    }
+  }, [localParticipant]);
 
   return (
     <>
@@ -57,7 +71,7 @@ function RoomInnerContent({ onLeave }: { onLeave: () => void }) {
       <AudioFallbackNotice />
 
       {/* Cabeçalho do Canal */}
-      <RoomHeader onLeave={onLeave} />
+      <RoomHeader onLeave={() => onLeave()} />
 
       {/* Conteúdo Principal (Área de Telas + Lista de Membros + Painel de Bate-papo) */}
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative min-h-0">
@@ -68,7 +82,7 @@ function RoomInnerContent({ onLeave }: { onLeave: () => void }) {
 
       {/* Barra de Controles Fixa no Rodapé com controle do Chat e Ensurdecer */}
       <ControlBar
-        onLeave={onLeave}
+        onLeave={() => onLeave()}
         isChatOpen={isChatOpen}
         onToggleChat={() => setIsChatOpen((prev) => !prev)}
         isDeafened={isDeafened}
@@ -87,9 +101,12 @@ export function RoomContainer({ token, wsUrl, onLeave }: RoomContainerProps) {
         serverUrl={wsUrl}
         token={token}
         connect={true}
-        audio={true} // Habilita áudio na entrada
+        audio={false} // Desativa tentativa síncrona no connect para evitar queda se o microfone demorar a responder
         video={false} // Desativa webcam para economizar RAM e CPU
-        onDisconnected={onLeave}
+        onDisconnected={(reason) => {
+          console.warn('LiveKit desconectado:', reason);
+          onLeave(reason ? `Desconectado do servidor: ${reason}` : undefined);
+        }}
         options={{
           adaptiveStream: true, // Reduz uso de RAM/GPU em faixas não visíveis
           dynacast: true,       // Otimiza decodificação WebRTC dinamicamente
@@ -114,6 +131,7 @@ export function RoomContainer({ token, wsUrl, onLeave }: RoomContainerProps) {
         }}
         onError={(err) => {
           console.error('Erro na sala LiveKit:', err);
+          onLeave(err?.message || 'Erro ao conectar à sala de voz.');
         }}
         style={{
           width: '100%',
