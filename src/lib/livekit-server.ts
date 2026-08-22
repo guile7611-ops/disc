@@ -4,9 +4,9 @@ import { RoomServiceClient } from 'livekit-server-sdk';
  * Converte a URL do WebSocket para o protocolo HTTP(S) esperado pelo RoomServiceClient.
  */
 export function getLiveKitHost(): string {
-  const rawUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL || '';
+  const rawUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL || process.env.LIVEKIT_URL || '';
   if (!rawUrl) return '';
-  return rawUrl.replace(/^wss:\/\//i, 'https://').replace(/^ws:\/\//i, 'http://');
+  return rawUrl.trim().replace(/^wss:\/\//i, 'https://').replace(/^ws:\/\//i, 'http://');
 }
 
 /**
