@@ -38,8 +38,10 @@ export function ScreenShareArea({ isDeafened = false }: ScreenShareAreaProps) {
 
   // Faixas de Vídeo da Tela
   const videoTracks = useTracks([{ source: Track.Source.ScreenShare, withPlaceholder: false }]);
-  // Faixas de Áudio da Tela
-  const audioTracks = useTracks([{ source: Track.Source.ScreenShareAudio, withPlaceholder: false }]);
+  // Faixas de Áudio da Tela (Exclui faixas locais do próprio usuário para evitar retorno e eco)
+  const audioTracks = useTracks([{ source: Track.Source.ScreenShareAudio, withPlaceholder: false }]).filter(
+    (t) => !t.participant.isLocal
+  );
 
   const [focusedParticipantId, setFocusedParticipantId] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);

@@ -204,12 +204,15 @@ export function ControlBar({
         nextState,
         {
           audio: {
-            echoCancellation: false,
+            echoCancellation: true, // Filtra eco e vozes que saem na saída de áudio
             noiseSuppression: false,
             autoGainControl: false,
             channelCount: 2,
             sampleRate: 48000,
           },
+          suppressLocalAudioPlayback: true,
+          selfBrowserSurface: 'exclude', // Exclui o som e a superfície do próprio app de chamada
+          systemAudio: 'include',
           resolution: {
             width: activeConfig.width,
             height: activeConfig.height,
