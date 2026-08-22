@@ -92,9 +92,29 @@ function RoomInnerContent({ onLeave }: { onLeave: (reason?: string) => void }) {
   );
 }
 
-export function RoomContainer({ token, wsUrl, onLeave }: RoomContainerProps) {
-  const { selectedDeviceId } = useMicrophones();
+const LIVEKIT_ROOM_OPTIONS = {
+  adaptiveStream: true, // Reduz uso de RAM/GPU em faixas não visíveis
+  dynacast: true,       // Otimiza decodificação WebRTC dinamicamente
+  publishDefaults: {
+    simulcast: false,   // Transmissão de 1080p Full HD pura sem downscaling
+    forceStereo: true,  // Suporte a áudio estéreo para som de jogos e música
+    dtx: false,         // Desativa descontinuidade de transmissão para áudio contínuo de jogos
+    audioPreset: {
+      maxBitrate: 192_000, // 192 kbps de áudio de alta fidelidade
+    },
+    screenShareEncoding: {
+      maxBitrate: 10_000_000, // 10 Mbps de bitrate para qualidade Full HD 1080p 60 FPS nativa de jogos
+      maxFramerate: 60,
+    },
+  },
+  audioCaptureDefaults: {
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true,
+  },
+};
 
+export function RoomContainer({ token, wsUrl, onLeave }: RoomContainerProps) {
   return (
     <div className="fixed inset-0 w-screen h-screen bg-[#1e1f22] overflow-hidden select-none flex flex-col z-50">
       <LiveKitRoom
@@ -103,31 +123,18 @@ export function RoomContainer({ token, wsUrl, onLeave }: RoomContainerProps) {
         connect={true}
         audio={false} // Desativa tentativa síncrona no connect para evitar queda se o microfone demorar a responder
         video={false} // Desativa webcam para economizar RAM e CPU
+        options={LIVEKIT_ROOM_OPTIONS}
         onDisconnected={(reason) => {
           console.warn('LiveKit desconectado:', reason);
-          onLeave(reason ? `Desconectado do servidor: ${reason}` : undefined);
-        }}
-        options={{
-          adaptiveStream: true, // Reduz uso de RAM/GPU em faixas não visíveis
-          dynacast: true,       // Otimiza decodificação WebRTC dinamicamente
-          publishDefaults: {
-            simulcast: false,   // Transmissão de 1080p Full HD pura sem downscaling
-            forceStereo: true,  // Suporte a áudio estéreo para som de jogos e música
-            dtx: false,         // Desativa descontinuidade de transmissão para áudio contínuo de jogos
-            audioPreset: {
-              maxBitrate: 192_000, // 192 kbps de áudio de alta fidelidade
-            },
-            screenShareEncoding: {
-              maxBitrate: 10_000_000, // 10 Mbps de bitrate para qualidade Full HD 1080p 60 FPS nativa de jogos
-              maxFramerate: 60,
-            },
-          },
-          audioCaptureDefaults: {
-            deviceId: selectedDeviceId || undefined,
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-          },
+          // Ignora desconexões iniciadas pelo cliente durante montagem/limpeza de ciclo de vida
+          const reasonStr = String(reason || '');
+          if (
+            reasonStr.toLowerCase().includes('client') ||
+            reasonStr.toLowerCase().includes('duplicate_identity')
+          ) {
+            return;
+          }
+          onLeave(reason ? `Desconectado da sala: ${reason}` : undefined);
         }}
         onError={(err) => {
           console.error('Erro na sala LiveKit:', err);
