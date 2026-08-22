@@ -29,7 +29,11 @@ interface ContextMenuPosition {
   participantIdentity: string;
 }
 
-export function ScreenShareArea() {
+interface ScreenShareAreaProps {
+  isDeafened?: boolean;
+}
+
+export function ScreenShareArea({ isDeafened = false }: ScreenShareAreaProps) {
   const room = useRoomContext();
 
   // Faixas de Vídeo da Tela
@@ -265,7 +269,7 @@ export function ScreenShareArea() {
         : null;
     const aTrackPub = audioTrackRef?.publication;
 
-    const currentVolume = currentState.isMuted || currentState.isStopped ? 0 : currentState.volume / 100;
+    const currentVolume = isDeafened || currentState.isMuted || currentState.isStopped ? 0 : currentState.volume / 100;
 
     return (
       <div
@@ -407,7 +411,7 @@ export function ScreenShareArea() {
               : null;
           const aTrackPub = audioTrackRef?.publication;
 
-          const currentVolume = currentState.isMuted || currentState.isStopped ? 0 : currentState.volume / 100;
+          const currentVolume = isDeafened || currentState.isMuted || currentState.isStopped ? 0 : currentState.volume / 100;
 
           return (
             <div

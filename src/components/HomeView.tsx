@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRoomStatus } from '@/hooks/useRoomStatus';
 import { validateNickname } from '@/lib/validation';
 import { VoiceTest } from '@/components/VoiceTest';
@@ -12,10 +12,22 @@ interface HomeViewProps {
   joinError: string | null;
 }
 
+const NICKNAME_STORAGE_KEY = 'sala_principal_saved_nickname';
+
 export function HomeView({ onJoinRoom, isJoining, joinError }: HomeViewProps) {
   const [nicknameInput, setNicknameInput] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
   const { participantCount, isLoading: isStatusLoading } = useRoomStatus(true);
+
+  // Carrega o último nickname salvo
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(NICKNAME_STORAGE_KEY);
+      if (saved) {
+        setNicknameInput(saved);
+      }
+    }
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,6 +40,9 @@ export function HomeView({ onJoinRoom, isJoining, joinError }: HomeViewProps) {
     }
 
     try {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(NICKNAME_STORAGE_KEY, validation.sanitized);
+      }
       await onJoinRoom(validation.sanitized);
     } catch {
       // O erro global de conexão será exibido via props joinError

@@ -10,16 +10,22 @@ export function useDuckSound() {
 
   // Inicializa ou reaproveita o AudioContext
   const getAudioContext = useCallback(() => {
-    if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
-      const AudioCtxClass =
-        window.AudioContext ||
-        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      audioCtxRef.current = new AudioCtxClass();
+    if (typeof window === 'undefined') return null;
+
+    try {
+      if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
+        const AudioCtxClass =
+          window.AudioContext ||
+          (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        audioCtxRef.current = new AudioCtxClass();
+      }
+      if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
+        audioCtxRef.current.resume().catch(() => {});
+      }
+      return audioCtxRef.current;
+    } catch {
+      return null;
     }
-    if (audioCtxRef.current.state === 'suspended') {
-      audioCtxRef.current.resume().catch(() => {});
-    }
-    return audioCtxRef.current;
   }, []);
 
   // Sintetizador Web Audio de Som de Pato ("Quack!") 100% nativo e sem arquivos externos
@@ -77,16 +83,44 @@ export function useDuckSound() {
     [getAudioContext]
   );
 
+  // Reproduz o efeito sonoro oficial "Uau" quando alguém se conecta na chamada
+  const playJoinSound = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const audio = new Audio('/sounds/join.mp3');
+      audio.volume = 0.75;
+      audio.play().catch((err) => {
+        console.warn('Aviso ao tocar som de entrada:', err);
+      });
+    } catch (err) {
+      console.error('Erro ao carregar som de entrada:', err);
+    }
+  }, []);
+
+  // Reproduz o efeito sonoro oficial "Fahhhh" quando alguém se desconecta da chamada
+  const playLeaveSound = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const audio = new Audio('/sounds/leave.mp3');
+      audio.volume = 0.75;
+      audio.play().catch((err) => {
+        console.warn('Aviso ao tocar som de saída:', err);
+      });
+    } catch (err) {
+      console.error('Erro ao carregar som de saída:', err);
+    }
+  }, []);
+
   // Escuta os eventos de conexão e desconexão de participantes na sala LiveKit
   useEffect(() => {
     if (!room) return;
 
     const handleParticipantConnected = () => {
-      playQuack('join');
+      playJoinSound();
     };
 
     const handleParticipantDisconnected = () => {
-      playQuack('leave');
+      playLeaveSound();
     };
 
     room.on(RoomEvent.ParticipantConnected, handleParticipantConnected);
@@ -96,7 +130,7 @@ export function useDuckSound() {
       room.off(RoomEvent.ParticipantConnected, handleParticipantConnected);
       room.off(RoomEvent.ParticipantDisconnected, handleParticipantDisconnected);
     };
-  }, [room, playQuack]);
+  }, [room, playJoinSound, playLeaveSound]);
 
-  return { playQuack };
+  return { playQuack, playJoinSound, playLeaveSound };
 }

@@ -28,6 +28,7 @@ export function ChatPanel({ isOpen, onClose, onNewMessage }: ChatPanelProps) {
   const [messages, setMessages] = useState<StoredChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // Carrega histórico do localStorage e descarta mensagens com mais de 3 minutos
   const loadAndCleanMessages = useCallback(() => {
@@ -64,6 +65,9 @@ export function ChatPanel({ isOpen, onClose, onNewMessage }: ChatPanelProps) {
   useEffect(() => {
     if (isOpen) {
       scrollToBottom();
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
     }
   }, [messages, isOpen]);
 
@@ -148,7 +152,7 @@ export function ChatPanel({ isOpen, onClose, onNewMessage }: ChatPanelProps) {
   if (!isOpen) return null;
 
   return (
-    <aside className="w-full md:w-80 h-full bg-[#2b2d31] border-l border-[#1e1f22] flex flex-col z-20 shrink-0 select-none shadow-2xl relative">
+    <aside className="fixed inset-0 z-40 md:relative md:inset-auto md:w-80 md:z-20 h-full bg-[#2b2d31] border-l border-[#1e1f22] flex flex-col shrink-0 select-none shadow-2xl animate-in fade-in duration-150">
       {/* Cabeçalho do Chat */}
       <div className="h-14 border-b border-[#1e1f22] px-4 flex items-center justify-between bg-[#2b2d31]">
         <div className="flex items-center gap-2 text-white font-bold text-sm">
@@ -217,6 +221,7 @@ export function ChatPanel({ isOpen, onClose, onNewMessage }: ChatPanelProps) {
       <form onSubmit={handleSend} className="p-3 bg-[#1e1f22] border-t border-[#313338]">
         <div className="relative flex items-center">
           <input
+            ref={inputRef}
             type="text"
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}

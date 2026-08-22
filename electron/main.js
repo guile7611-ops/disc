@@ -149,7 +149,10 @@ function createWindow() {
           }
         });
 
+        let responded = false;
         const handleChosen = (event, sourceId) => {
+          if (responded) return;
+          responded = true;
           if (pickerWindow) {
             try { pickerWindow.close(); } catch (e) {}
             pickerWindow = null;
@@ -169,6 +172,10 @@ function createWindow() {
         pickerWindow.on('closed', () => {
           ipcMain.removeListener('source-chosen', handleChosen);
           pickerWindow = null;
+          if (!responded) {
+            responded = true;
+            callback({});
+          }
         });
       })
       .catch((err) => {

@@ -21,15 +21,67 @@ import {
   Settings,
   MessageSquare,
   Sparkles,
+  Headphones,
+  SlidersHorizontal,
+  Zap,
 } from 'lucide-react';
+
+export type ScreenQualityPreset = '1080p60' | '720p30' | '1080p30';
+
+export const SCREEN_PRESETS: Record<
+  ScreenQualityPreset,
+  {
+    name: string;
+    description: string;
+    width: number;
+    height: number;
+    frameRate: number;
+    maxBitrate: number;
+  }
+> = {
+  '1080p60': {
+    name: '1080p @ 60 FPS',
+    description: 'Ultra HD • Fluido p/ Jogos (10 Mbps)',
+    width: 1920,
+    height: 1080,
+    frameRate: 60,
+    maxBitrate: 10_000_000,
+  },
+  '720p30': {
+    name: '720p @ 30 FPS',
+    description: 'HD Econômico • Menor uso de CPU/Rede (3 Mbps)',
+    width: 1280,
+    height: 720,
+    frameRate: 30,
+    maxBitrate: 3_000_000,
+  },
+  '1080p30': {
+    name: '1080p @ 30 FPS',
+    description: 'Full HD Nítido • Texto & Código (4.5 Mbps)',
+    width: 1920,
+    height: 1080,
+    frameRate: 30,
+    maxBitrate: 4_500_000,
+  },
+};
+
+const QUALITY_STORAGE_KEY = 'screenshare_quality_preset';
 
 interface ControlBarProps {
   onLeave: () => void;
   isChatOpen: boolean;
   onToggleChat: () => void;
+  isDeafened?: boolean;
+  onToggleDeafen?: () => void;
 }
 
-export function ControlBar({ onLeave, isChatOpen, onToggleChat }: ControlBarProps) {
+export function ControlBar({
+  onLeave,
+  isChatOpen,
+  onToggleChat,
+  isDeafened = false,
+  onToggleDeafen,
+}: ControlBarProps) {
   const room = useRoomContext();
   const { localParticipant, isMicrophoneEnabled, isScreenShareEnabled } = useLocalParticipant();
   const isScreenShareSupported = useScreenShareSupport();
@@ -43,10 +95,31 @@ export function ControlBar({ onLeave, isChatOpen, onToggleChat }: ControlBarProp
   const [isMicLoading, setIsMicLoading] = useState(false);
   const [isScreenLoading, setIsScreenLoading] = useState(false);
   const [showMicMenu, setShowMicMenu] = useState(false);
+  const [showQualityMenu, setShowQualityMenu] = useState(false);
+  const [qualityPreset, setQualityPreset] = useState<ScreenQualityPreset>('1080p60');
   const [unreadCount, setUnreadCount] = useState(0);
 
   const lastSeenMsgCountRef = useRef(chatMessages.length);
   const menuRef = useRef<HTMLDivElement>(null);
+  const qualityMenuRef = useRef<HTMLDivElement>(null);
+
+  // Carrega preset de qualidade salvo
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(QUALITY_STORAGE_KEY) as ScreenQualityPreset | null;
+      if (saved && SCREEN_PRESETS[saved]) {
+        setQualityPreset(saved);
+      }
+    }
+  }, []);
+
+  const handleSelectQuality = (preset: ScreenQualityPreset) => {
+    setQualityPreset(preset);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(QUALITY_STORAGE_KEY, preset);
+    }
+    setShowQualityMenu(false);
+  };
 
   // Contador de mensagens não lidas no Chat
   useEffect(() => {
@@ -72,6 +145,17 @@ export function ControlBar({ onLeave, isChatOpen, onToggleChat }: ControlBarProp
       console.error('Erro ao alternar microfone:', err);
     } finally {
       setIsMicLoading(false);
+    }
+  };
+
+  const handleToggleDeafen = () => {
+    if (!onToggleDeafen) return;
+    const nextDeafened = !isDeafened;
+    onToggleDeafen();
+
+    // Se estiver ativando o ensurdecer, desativa o microfone também (padrão Discord)
+    if (nextDeafened && isMicrophoneEnabled && localParticipant) {
+      localParticipant.setMicrophoneEnabled(false).catch(() => {});
     }
   };
 
@@ -112,17 +196,36 @@ export function ControlBar({ onLeave, isChatOpen, onToggleChat }: ControlBarProp
     if (!localParticipant || isScreenLoading || !isScreenShareSupported) return;
     setIsScreenLoading(true);
 
+    const activeConfig = SCREEN_PRESETS[qualityPreset] || SCREEN_PRESETS['1080p60'];
+
     try {
       const nextState = !isScreenShareEnabled;
-      await localParticipant.setScreenShareEnabled(nextState, {
-        audio: true,
-        resolution: {
-          width: 1920,
-          height: 1080,
-          frameRate: 60,
+      await localParticipant.setScreenShareEnabled(
+        nextState,
+        {
+          audio: {
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+            channelCount: 2,
+            sampleRate: 48000,
+          },
+          resolution: {
+            width: activeConfig.width,
+            height: activeConfig.height,
+            frameRate: activeConfig.frameRate,
+          },
+          contentHint: qualityPreset === '1080p30' ? 'text' : 'motion',
         },
-        contentHint: 'motion',
-      });
+        {
+          audioPreset: {
+            maxBitrate: 192_000,
+          },
+          dtx: false,
+          red: true,
+          forceStereo: true,
+        }
+      );
 
       if (nextState) {
         setTimeout(() => {
@@ -133,8 +236,8 @@ export function ControlBar({ onLeave, isChatOpen, onToggleChat }: ControlBarProp
               if (sender && typeof sender.getParameters === 'function') {
                 const params = sender.getParameters();
                 if (params && params.encodings && params.encodings.length > 0) {
-                  params.encodings[0].maxBitrate = 10_000_000;
-                  params.encodings[0].maxFramerate = 60;
+                  params.encodings[0].maxBitrate = activeConfig.maxBitrate;
+                  params.encodings[0].maxFramerate = activeConfig.frameRate;
                   params.degradationPreference = 'maintain-framerate';
                   sender.setParameters(params).catch(() => {});
                 }
@@ -157,16 +260,21 @@ export function ControlBar({ onLeave, isChatOpen, onToggleChat }: ControlBarProp
     onLeave();
   };
 
-  // Fecha o menu se clicar fora
+  // Fecha os menus se clicar fora
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setShowMicMenu(false);
       }
+      if (qualityMenuRef.current && !qualityMenuRef.current.contains(e.target as Node)) {
+        setShowQualityMenu(false);
+      }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  const activePresetConfig = SCREEN_PRESETS[qualityPreset] || SCREEN_PRESETS['1080p60'];
 
   return (
     <footer className="h-20 bg-[#232428] border-t border-[#1e1f22] px-4 md:px-6 flex items-center justify-between z-20 shrink-0 select-none relative">
@@ -181,7 +289,7 @@ export function ControlBar({ onLeave, isChatOpen, onToggleChat }: ControlBarProp
             Voz Conectada
           </p>
           <p className="text-[11px] text-[#949ba4] truncate max-w-40 flex items-center gap-1">
-            <span>Full HD 60fps</span>
+            <span>{activePresetConfig.name}</span>
             {isNoiseFilterEnabled && (
               <span className="text-[#23a55a] font-extrabold text-[10px]">/ Krisp AI</span>
             )}
@@ -190,14 +298,14 @@ export function ControlBar({ onLeave, isChatOpen, onToggleChat }: ControlBarProp
       </div>
 
       {/* Botões Centrais de Controle */}
-      <div className="flex items-center gap-3 mx-auto sm:mx-0">
-        {/* Grupo do Botão Microfone com Seletor Popover */}
+      <div className="flex items-center gap-2.5 sm:gap-3 mx-auto sm:mx-0">
+        {/* 1. Grupo do Botão Microfone com Seletor Popover */}
         <div className="relative flex items-center" ref={menuRef}>
           <div className="relative group flex items-center">
             <button
               onClick={toggleMicrophone}
               disabled={isMicLoading}
-              className={`h-12 px-4 rounded-l-full flex items-center justify-center transition-all cursor-pointer ${
+              className={`h-12 px-3.5 sm:px-4 rounded-l-full flex items-center justify-center transition-all cursor-pointer ${
                 isMicrophoneEnabled
                   ? 'bg-[#313338] hover:bg-[#3b3e45] text-[#dbdee1] border-y border-l border-[#3f4248]'
                   : 'bg-[#f23f43] hover:bg-[#d83a3e] text-white shadow-lg shadow-rose-950/40'
@@ -219,6 +327,7 @@ export function ControlBar({ onLeave, isChatOpen, onToggleChat }: ControlBarProp
                 refreshDevices();
                 refreshSpeakers();
                 setShowMicMenu((prev) => !prev);
+                setShowQualityMenu(false);
               }}
               className={`h-12 px-2 rounded-r-full flex items-center justify-center border-l border-[#383a40] transition-all cursor-pointer ${
                 isMicrophoneEnabled
@@ -302,7 +411,7 @@ export function ControlBar({ onLeave, isChatOpen, onToggleChat }: ControlBarProp
                 </div>
               </div>
 
-              {/* Seção 3: Supressão de Ruído Krisp AI (Botão Ativar / Desativar) */}
+              {/* Seção 3: Supressão de Ruído Krisp AI */}
               <div>
                 <div className="flex items-center justify-between px-1 py-1 border-b border-[#2b2d31] mb-2">
                   <div className="flex items-center gap-2">
@@ -363,8 +472,120 @@ export function ControlBar({ onLeave, isChatOpen, onToggleChat }: ControlBarProp
           )}
         </div>
 
-        {/* Botão Dedicado Krisp AI na Barra Central (Ativar / Desativar Rápido) */}
+        {/* 2. Botão Ensurdecer (Deafen - Silenciar Sala & Microfone) */}
         <div className="relative group">
+          <button
+            onClick={handleToggleDeafen}
+            className={`w-12 h-12 rounded-full flex items-center justify-center transition-all cursor-pointer relative ${
+              isDeafened
+                ? 'bg-[#f23f43] hover:bg-[#d83a3e] text-white shadow-lg shadow-rose-950/40 border border-[#f23f43]'
+                : 'bg-[#313338] hover:bg-[#3b3e45] text-[#dbdee1] border border-[#3f4248]'
+            }`}
+            aria-label={isDeafened ? 'Desativar ensurdecer' : 'Ensurdecer (Silenciar sala e microfone)'}
+          >
+            <Headphones className="w-5 h-5" />
+            {isDeafened && (
+              <span className="absolute w-7 h-0.5 bg-white rotate-45 pointer-events-none" />
+            )}
+          </button>
+          <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block bg-[#111214] text-[#dbdee1] text-xs px-3 py-1.5 rounded-md border border-[#2b2d31] whitespace-nowrap shadow-xl z-30">
+            {isDeafened ? 'Desativar Ensurdecer (Ouvir a sala)' : 'Ensurdecer (Silenciar sala e microfone)'}
+          </div>
+        </div>
+
+        {/* 3. Grupo de Compartilhamento de Tela com Seletor de Resolução / FPS */}
+        <div className="relative flex items-center" ref={qualityMenuRef}>
+          <div className="relative group flex items-center">
+            <button
+              onClick={toggleScreenShare}
+              disabled={isScreenLoading || !isScreenShareSupported}
+              className={`h-12 px-3.5 sm:px-4 rounded-l-full flex items-center justify-center transition-all cursor-pointer ${
+                !isScreenShareSupported
+                  ? 'bg-[#1e1f22] text-[#4e5058] border-y border-l border-[#2b2d31] cursor-not-allowed'
+                  : isScreenShareEnabled
+                  ? 'bg-[#23a55a] hover:bg-[#1d8a4b] text-white shadow-lg shadow-emerald-950/40 border-y border-l border-[#23a55a]'
+                  : 'bg-[#313338] hover:bg-[#3b3e45] text-[#dbdee1] border-y border-l border-[#3f4248]'
+              }`}
+              aria-label={isScreenShareEnabled ? 'Interromper compartilhamento' : 'Compartilhar tela'}
+            >
+              {isScreenLoading ? (
+                <Loader2 className="w-5 h-5 animate-spin text-[#949ba4]" />
+              ) : isScreenShareEnabled ? (
+                <MonitorOff className="w-5 h-5" />
+              ) : (
+                <Monitor className="w-5 h-5" />
+              )}
+            </button>
+
+            {/* Seta do Seletor de Qualidade da Transmissão */}
+            <button
+              onClick={() => {
+                setShowQualityMenu((prev) => !prev);
+                setShowMicMenu(false);
+              }}
+              disabled={!isScreenShareSupported}
+              className={`h-12 px-2 rounded-r-full flex items-center justify-center border-l border-[#383a40] transition-all cursor-pointer ${
+                !isScreenShareSupported
+                  ? 'bg-[#1e1f22] text-[#4e5058] border-y border-r border-[#2b2d31] cursor-not-allowed'
+                  : isScreenShareEnabled
+                  ? 'bg-[#23a55a] hover:bg-[#1d8a4b] text-white border-y border-r border-[#23a55a]'
+                  : 'bg-[#313338] hover:bg-[#3b3e45] text-[#dbdee1] border-y border-r border-[#3f4248]'
+              }`}
+              title="Qualidade e Resolução da Transmissão"
+            >
+              <ChevronUp className={`w-4 h-4 transition-transform duration-200 ${showQualityMenu ? 'rotate-180' : ''}`} />
+            </button>
+
+            <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block bg-[#111214] text-[#dbdee1] text-xs px-3 py-1.5 rounded-md border border-[#2b2d31] whitespace-nowrap shadow-xl z-30">
+              {!isScreenShareSupported
+                ? 'Compartilhamento indisponível'
+                : isScreenShareEnabled
+                ? 'Interromper compartilhamento'
+                : `Transmitir (${activePresetConfig.name})`}
+            </div>
+          </div>
+
+          {/* Menu Dropdown de Seleção de Qualidade de Tela */}
+          {showQualityMenu && (
+            <div className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 w-72 bg-[#111214] border border-[#313338] rounded-xl p-3 shadow-2xl z-50 animate-in fade-in slide-in-from-bottom-2 space-y-2">
+              <div className="flex items-center gap-2 px-1 py-1 border-b border-[#2b2d31] mb-2">
+                <SlidersHorizontal className="w-3.5 h-3.5 text-[#5865F2]" />
+                <span className="text-[11px] font-bold text-[#b5bac1] uppercase tracking-wider">
+                  Qualidade da Transmissão
+                </span>
+              </div>
+
+              {(Object.keys(SCREEN_PRESETS) as ScreenQualityPreset[]).map((key) => {
+                const preset = SCREEN_PRESETS[key];
+                const isSelected = qualityPreset === key;
+
+                return (
+                  <button
+                    key={key}
+                    onClick={() => handleSelectQuality(key)}
+                    className={`w-full text-left p-2.5 rounded-lg text-xs transition-all cursor-pointer flex items-center justify-between border ${
+                      isSelected
+                        ? 'bg-[#5865F2]/20 border-[#5865F2] text-white font-bold'
+                        : 'bg-[#1e1f22] border-[#2b2d31] text-[#dbdee1] hover:bg-[#2b2d31]'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        {key === '1080p60' && <Zap className="w-3.5 h-3.5 text-[#23a55a]" />}
+                        <p className="font-bold text-white">{preset.name}</p>
+                      </div>
+                      <p className="text-[10px] text-[#949ba4] mt-0.5">{preset.description}</p>
+                    </div>
+                    {isSelected && <Check className="w-4 h-4 text-[#5865F2] shrink-0 ml-2" />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* 4. Botão Dedicado Krisp AI */}
+        <div className="relative group hidden lg:block">
           <button
             onClick={toggleKrispNoiseFilter}
             disabled={isNoiseFilterPending}
@@ -380,47 +601,16 @@ export function ControlBar({ onLeave, isChatOpen, onToggleChat }: ControlBarProp
             ) : (
               <Sparkles className={`w-4 h-4 ${isNoiseFilterEnabled ? 'text-[#23a55a] animate-pulse' : 'text-[#949ba4]'}`} />
             )}
-            <span className="hidden lg:inline">
+            <span>
               {isNoiseFilterEnabled ? 'Krisp On' : 'Krisp Off'}
             </span>
           </button>
-          <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block bg-[#111214] text-[#dbdee1] text-xs px-3 py-1.5 rounded-md border border-[#2b2d31] whitespace-nowrap shadow-xl">
+          <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block bg-[#111214] text-[#dbdee1] text-xs px-3 py-1.5 rounded-md border border-[#2b2d31] whitespace-nowrap shadow-xl z-30">
             {isNoiseFilterEnabled ? 'Desativar Supressão Krisp AI' : 'Ativar Supressão Krisp AI'}
           </div>
         </div>
 
-        {/* Botão Compartilhar Tela (Full HD 1080p 60 FPS) */}
-        <div className="relative group">
-          <button
-            onClick={toggleScreenShare}
-            disabled={isScreenLoading || !isScreenShareSupported}
-            className={`w-12 h-12 rounded-full flex items-center justify-center transition-all cursor-pointer ${
-              !isScreenShareSupported
-                ? 'bg-[#1e1f22] text-[#4e5058] border border-[#2b2d31] cursor-not-allowed'
-                : isScreenShareEnabled
-                ? 'bg-[#23a55a] hover:bg-[#1d8a4b] text-white shadow-lg shadow-emerald-950/40 border border-[#23a55a]'
-                : 'bg-[#313338] hover:bg-[#3b3e45] text-[#dbdee1] border border-[#3f4248]'
-            }`}
-            aria-label={isScreenShareEnabled ? 'Interromper compartilhamento' : 'Compartilhar tela (Full HD 1080p 60 FPS)'}
-          >
-            {isScreenLoading ? (
-              <Loader2 className="w-5 h-5 animate-spin text-[#949ba4]" />
-            ) : isScreenShareEnabled ? (
-              <MonitorOff className="w-5 h-5" />
-            ) : (
-              <Monitor className="w-5 h-5" />
-            )}
-          </button>
-          <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block bg-[#111214] text-[#dbdee1] text-xs px-3 py-1.5 rounded-md border border-[#2b2d31] whitespace-nowrap shadow-xl">
-            {!isScreenShareSupported
-              ? 'Compartilhamento de tela indisponível no dispositivo'
-              : isScreenShareEnabled
-              ? 'Interromper compartilhamento'
-              : 'Compartilhar tela (Full HD 1920x1080 @ 60 FPS)'}
-          </div>
-        </div>
-
-        {/* Botão de Bate-papo (Chat) */}
+        {/* 5. Botão de Bate-papo (Chat) */}
         <div className="relative group">
           <button
             onClick={onToggleChat}
@@ -440,12 +630,12 @@ export function ControlBar({ onLeave, isChatOpen, onToggleChat }: ControlBarProp
               </span>
             )}
           </button>
-          <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block bg-[#111214] text-[#dbdee1] text-xs px-3 py-1.5 rounded-md border border-[#2b2d31] whitespace-nowrap shadow-xl">
+          <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block bg-[#111214] text-[#dbdee1] text-xs px-3 py-1.5 rounded-md border border-[#2b2d31] whitespace-nowrap shadow-xl z-30">
             {isChatOpen ? 'Fechar Bate-papo' : 'Abrir Bate-papo da Sala'}
           </div>
         </div>
 
-        {/* Botão Desconectar */}
+        {/* 6. Botão Desconectar */}
         <div className="relative group">
           <button
             onClick={handleDisconnect}
@@ -454,15 +644,17 @@ export function ControlBar({ onLeave, isChatOpen, onToggleChat }: ControlBarProp
           >
             <PhoneOff className="w-5 h-5" />
           </button>
-          <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block bg-[#111214] text-[#dbdee1] text-xs px-3 py-1.5 rounded-md border border-[#2b2d31] whitespace-nowrap shadow-xl">
+          <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block bg-[#111214] text-[#dbdee1] text-xs px-3 py-1.5 rounded-md border border-[#2b2d31] whitespace-nowrap shadow-xl z-30">
             Desconectar da chamada
           </div>
         </div>
       </div>
 
-      {/* Espaçador para alinhamento */}
+      {/* Espaçador para alinhamento / Indicador de Resolução ativa */}
       <div className="hidden sm:block min-w-48 text-right text-xs text-[#949ba4]">
-        Full HD (1080p @ 60 FPS)
+        <span className="px-2 py-1 rounded bg-[#1e1f22] border border-[#313338] text-[#dbdee1] font-semibold">
+          {activePresetConfig.name}
+        </span>
       </div>
     </footer>
   );

@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { LiveKitRoom, RoomAudioRenderer } from '@livekit/components-react';
+import { LiveKitRoom, useTracks, AudioTrack } from '@livekit/components-react';
+import { Track } from 'livekit-client';
 import { RoomHeader } from '@/components/RoomHeader';
 import { ScreenShareArea } from '@/components/ScreenShareArea';
 import { ParticipantList } from '@/components/ParticipantList';
@@ -17,17 +18,40 @@ interface RoomContainerProps {
   onLeave: () => void;
 }
 
+// Renderizador de áudio exclusivo para microfones de voz remotos
+// (Evita duplicar o áudio das transmissões de tela que já são reproduzidas no ScreenShareArea com controle de volume)
+function VoiceAudioRenderer({ isDeafened }: { isDeafened: boolean }) {
+  const micTracks = useTracks([Track.Source.Microphone], {
+    updateOnlyOn: [],
+    onlySubscribed: true,
+  }).filter((ref) => !ref.participant.isLocal && ref.publication.kind === Track.Kind.Audio);
+
+  return (
+    <div style={{ display: 'none' }}>
+      {micTracks.map((trackRef) => (
+        <AudioTrack
+          key={`${trackRef.participant.identity}-${trackRef.source}-${trackRef.publication?.trackSid || ''}`}
+          trackRef={trackRef}
+          volume={isDeafened ? 0 : 1}
+          muted={isDeafened}
+        />
+      ))}
+    </div>
+  );
+}
+
 // Subcomponente interno para ter acesso ao contexto da sala LiveKit e ativar o efeito sonoro de pato
 function RoomInnerContent({ onLeave }: { onLeave: () => void }) {
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isDeafened, setIsDeafened] = useState(false);
   
   // Ativa automaticamente o som de pato ("Quack!") quando alguém entra ou sai
   useDuckSound();
 
   return (
     <>
-      {/* Renderer de áudio remoto */}
-      <RoomAudioRenderer />
+      {/* Renderer exclusivo de microfones (respeita o modo ensurdecer) */}
+      <VoiceAudioRenderer isDeafened={isDeafened} />
 
       {/* Alerta de Autoplay do Navegador */}
       <AudioFallbackNotice />
@@ -37,16 +61,18 @@ function RoomInnerContent({ onLeave }: { onLeave: () => void }) {
 
       {/* Conteúdo Principal (Área de Telas + Lista de Membros + Painel de Bate-papo) */}
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative min-h-0">
-        <ScreenShareArea />
+        <ScreenShareArea isDeafened={isDeafened} />
         <ParticipantList />
         <ChatPanel isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
       </div>
 
-      {/* Barra de Controles Fixa no Rodapé com controle do Chat */}
+      {/* Barra de Controles Fixa no Rodapé com controle do Chat e Ensurdecer */}
       <ControlBar
         onLeave={onLeave}
         isChatOpen={isChatOpen}
         onToggleChat={() => setIsChatOpen((prev) => !prev)}
+        isDeafened={isDeafened}
+        onToggleDeafen={() => setIsDeafened((prev) => !prev)}
       />
     </>
   );
@@ -69,6 +95,11 @@ export function RoomContainer({ token, wsUrl, onLeave }: RoomContainerProps) {
           dynacast: true,       // Otimiza decodificação WebRTC dinamicamente
           publishDefaults: {
             simulcast: false,   // Transmissão de 1080p Full HD pura sem downscaling
+            forceStereo: true,  // Suporte a áudio estéreo para som de jogos e música
+            dtx: false,         // Desativa descontinuidade de transmissão para áudio contínuo de jogos
+            audioPreset: {
+              maxBitrate: 192_000, // 192 kbps de áudio de alta fidelidade
+            },
             screenShareEncoding: {
               maxBitrate: 10_000_000, // 10 Mbps de bitrate para qualidade Full HD 1080p 60 FPS nativa de jogos
               maxFramerate: 60,

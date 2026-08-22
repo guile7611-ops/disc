@@ -31,7 +31,8 @@
         "portable",
         "nsis"
       ],
-      "icon": "build/icon.ico"
+      "icon": "build/icon.ico",
+      "forceCodeSigning": false
     },
     "nsis": {
       "oneClick": true,
@@ -61,7 +62,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "electron": "^34.3.0",
-    "electron-builder": "^25.1.8",
+    "electron-builder": "^26.15.3",
     "eslint": "^9",
     "eslint-config-next": "16.3.1",
     "png-to-ico": "^2.1.8",
