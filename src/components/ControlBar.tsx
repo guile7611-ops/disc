@@ -215,38 +215,68 @@ export function ControlBar({
             height: activeConfig.height,
             frameRate: activeConfig.frameRate,
           },
-          contentHint: qualityPreset === '1080p30' ? 'text' : 'motion',
+          contentHint: 'motion',
         },
         {
           audioPreset: {
             maxBitrate: 192_000,
           },
+          screenShareEncoding: {
+            maxBitrate: activeConfig.maxBitrate,
+            maxFramerate: activeConfig.frameRate,
+          },
+          simulcast: false,
           dtx: false,
           red: true,
           forceStereo: true,
+          degradationPreference: 'maintain-framerate',
         }
       );
 
       if (nextState) {
-        setTimeout(() => {
+        // Função auxiliar para fixar 1080p 60fps no MediaStreamTrack e RTCRtpSender
+        const enforceHighQualitySettings = () => {
           try {
             const screenTrackPub = localParticipant.getTrackPublication(Track.Source.ScreenShare);
             if (screenTrackPub && screenTrackPub.track) {
+              // 1. Força restrições de 1080p 60fps e contentHint motion no track nativo do navegador
+              const mediaTrack = screenTrackPub.track.mediaStreamTrack;
+              if (mediaTrack) {
+                if (typeof mediaTrack.applyConstraints === 'function') {
+                  mediaTrack
+                    .applyConstraints({
+                      width: { ideal: activeConfig.width, max: activeConfig.width },
+                      height: { ideal: activeConfig.height, max: activeConfig.height },
+                      frameRate: { ideal: activeConfig.frameRate, min: 30, max: activeConfig.frameRate },
+                    })
+                    .catch(() => {});
+                }
+                mediaTrack.contentHint = 'motion';
+              }
+
+              // 2. Trava a taxa de quadros e bitrate máximo no sender WebRTC
               const sender = screenTrackPub.track.sender;
               if (sender && typeof sender.getParameters === 'function') {
                 const params = sender.getParameters();
                 if (params && params.encodings && params.encodings.length > 0) {
-                  params.encodings[0].maxBitrate = activeConfig.maxBitrate;
-                  params.encodings[0].maxFramerate = activeConfig.frameRate;
+                  params.encodings.forEach((enc) => {
+                    enc.maxBitrate = activeConfig.maxBitrate;
+                    enc.maxFramerate = activeConfig.frameRate;
+                    enc.scaleResolutionDownBy = 1.0;
+                  });
                   params.degradationPreference = 'maintain-framerate';
                   sender.setParameters(params).catch(() => {});
                 }
               }
             }
           } catch (e) {
-            console.error('Aviso ao ajustar sender WebRTC:', e);
+            console.error('Aviso ao ajustar configurações WebRTC de 1080p 60fps:', e);
           }
-        }, 500);
+        };
+
+        // Aplica imediatamente e reforça após a estabilização da conexão WebRTC
+        setTimeout(enforceHighQualitySettings, 300);
+        setTimeout(enforceHighQualitySettings, 1000);
       }
     } catch (err) {
       console.log('Seleção de tela cancelada ou recusada:', err);
