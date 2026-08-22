@@ -18,9 +18,9 @@ export async function POST(request: Request) {
       );
     }
 
-    const apiKey = process.env.LIVEKIT_API_KEY;
-    const apiSecret = process.env.LIVEKIT_API_SECRET;
-    const wsUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL;
+    const apiKey = (process.env.LIVEKIT_API_KEY || '').trim();
+    const apiSecret = (process.env.LIVEKIT_API_SECRET || '').trim();
+    const wsUrl = (process.env.NEXT_PUBLIC_LIVEKIT_URL || '').trim();
 
     if (!apiKey || !apiSecret || !wsUrl) {
       return NextResponse.json(

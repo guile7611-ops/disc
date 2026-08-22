@@ -13,8 +13,8 @@ export function getLiveKitHost(): string {
  * Cria uma instância do cliente de API do servidor LiveKit.
  */
 export function getRoomServiceClient(): RoomServiceClient | null {
-  const apiKey = process.env.LIVEKIT_API_KEY;
-  const apiSecret = process.env.LIVEKIT_API_SECRET;
+  const apiKey = (process.env.LIVEKIT_API_KEY || '').trim();
+  const apiSecret = (process.env.LIVEKIT_API_SECRET || '').trim();
   const host = getLiveKitHost();
 
   if (!apiKey || !apiSecret || !host) {
