@@ -115,10 +115,19 @@ const LIVEKIT_ROOM_OPTIONS = {
 };
 
 export function RoomContainer({ token, wsUrl, onLeave }: RoomContainerProps) {
+  // Garante que o serverUrl tenha o formato WebSocket correto mesmo em caso de variavel sem protocolo
+  const cleanWsUrl = wsUrl?.trim().replace(/^["']|["']$/g, '') || '';
+  const formattedServerUrl = cleanWsUrl
+    ? (cleanWsUrl.includes('://')
+        ? cleanWsUrl.replace(/^https:\/\//i, 'wss://').replace(/^http:\/\//i, 'ws://')
+        : `wss://${cleanWsUrl}`
+      ).replace(/\/+$/, '')
+    : cleanWsUrl;
+
   return (
     <div className="fixed inset-0 w-screen h-screen bg-[#1e1f22] overflow-hidden select-none flex flex-col z-50">
       <LiveKitRoom
-        serverUrl={wsUrl}
+        serverUrl={formattedServerUrl}
         token={token}
         connect={true}
         audio={false} // Desativa tentativa síncrona no connect para evitar queda se o microfone demorar a responder

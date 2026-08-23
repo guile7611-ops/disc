@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { AccessToken } from 'livekit-server-sdk';
 import { validateNickname } from '@/lib/validation';
+import { getLiveKitWsUrl } from '@/lib/livekit-server';
 
 export const runtime = 'nodejs';
 
@@ -18,13 +19,13 @@ export async function POST(request: Request) {
       );
     }
 
-    const apiKey = (process.env.LIVEKIT_API_KEY || '').trim();
-    const apiSecret = (process.env.LIVEKIT_API_SECRET || '').trim();
-    const wsUrl = (process.env.NEXT_PUBLIC_LIVEKIT_URL || process.env.LIVEKIT_URL || '').trim();
+    const apiKey = (process.env.LIVEKIT_API_KEY || '').trim().replace(/^["']|["']$/g, '');
+    const apiSecret = (process.env.LIVEKIT_API_SECRET || '').trim().replace(/^["']|["']$/g, '');
+    const wsUrl = getLiveKitWsUrl();
 
     if (!apiKey || !apiSecret || !wsUrl) {
       return NextResponse.json(
-        { error: 'As variáveis de ambiente do LiveKit não estão configuradas no servidor.' },
+        { error: 'As variáveis de ambiente do LiveKit não estão configuradas corretamente no servidor.' },
         { status: 500 }
       );
     }
