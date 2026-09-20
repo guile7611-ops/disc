@@ -1,23 +1,29 @@
 const { app, BrowserWindow, session, desktopCapturer, ipcMain } = require('electron');
 const path = require('path');
 
-// Desativa os experimentos do Chromium para garantir o bloqueio da API WGC
+// Desativa os experimentos do Chromium para garantir consistência
 app.commandLine.appendSwitch('disable-field-trial-config');
 
-// Flags estritas do Chromium para forçar suporte total a GDI/DXGI, sem borda e sem ducking de volume WebRTC
+// Flags de Desempenho e Aceleração por Hardware da GPU (Zero-Copy e D3D11)
+app.commandLine.appendSwitch('ignore-gpu-blocklist');
+app.commandLine.appendSwitch('enable-gpu-rasterization');
+app.commandLine.appendSwitch('enable-zero-copy');
+app.commandLine.appendSwitch('enable-accelerated-video-decode');
+app.commandLine.appendSwitch('enable-accelerated-video-encode');
+
+// Ativa a captura direta via D3D11 e DXGI com aceleração de hardware nativa na GPU
 app.commandLine.appendSwitch(
-  'disable-features',
-  'WinGraphicsCapture,WinGraphicsCaptureWindow,WinGraphicsCaptureScreen,WebRtcAllowWgcScreenCapturer,WebRtcAllowWgcWindowCapturer,WebRtcAllowWgcDesktopCapturer,AllowWgcDesktopCapturer,MediaFoundationD3D11VideoCapture,WgcDesktopCapturer,WgcWindowCapturer,WebRtcAllowInputVolumeAdjustment'
+  'enable-features',
+  'WebRtcAllowDxgiGdiCapturer,MediaFoundationD3D11VideoCapture,CanvasOopRasterization,UseSkiaRenderer,VaapiVideoEncoder'
 );
-app.commandLine.appendSwitch('enable-features', 'WebRtcAllowDxgiGdiCapturer,CanvasOopRasterization,UseSkiaRenderer');
-app.commandLine.appendSwitch('disable-wgc-capturer');
-app.commandLine.appendSwitch('disable-wgc-window-capturer');
+
+// Desativa intervenções do WebRTC no microfone do sistema
+app.commandLine.appendSwitch('disable-features', 'WebRtcAllowInputVolumeAdjustment');
 
 // Flags de Desempenho do Chromium para 60 FPS e estabilidade de áudio em segundo plano
 app.commandLine.appendSwitch('high-dpi-support', '1');
 app.commandLine.appendSwitch('force-device-scale-factor', '1');
 app.commandLine.appendSwitch('enable-usermedia-screen-capturing');
-app.commandLine.appendSwitch('enable-gpu-rasterization');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('disable-background-timer-throttling');
 

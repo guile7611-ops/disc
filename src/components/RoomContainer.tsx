@@ -109,14 +109,16 @@ const LIVEKIT_ROOM_OPTIONS = {
   adaptiveStream: true, // Reduz uso de RAM/GPU em faixas não visíveis
   dynacast: true,       // Otimiza decodificação WebRTC dinamicamente
   publishDefaults: {
-    simulcast: false,   // Transmissão de 1080p Full HD pura sem downscaling
+    simulcast: false,   // Transmissão pura sem downscaling
     forceStereo: true,  // Suporte a áudio estéreo para som de jogos e música
     dtx: false,         // Desativa descontinuidade de transmissão para áudio contínuo de jogos
+    videoCodec: 'h264' as const, // Aceleração por hardware na GPU (NVENC / QuickSync / AMF)
+    degradationPreference: 'balanced' as const, // Adaptação suave sem travar o pipeline da GPU nem os jogos
     audioPreset: {
       maxBitrate: 192_000, // 192 kbps de áudio de alta fidelidade
     },
     screenShareEncoding: {
-      maxBitrate: 10_000_000, // 10 Mbps de bitrate para qualidade Full HD 1080p 60 FPS nativa de jogos
+      maxBitrate: 6_000_000, // 6 Mbps otimizado (padrão Discord Nitro)
       maxFramerate: 60,
     },
   },

@@ -26,7 +26,7 @@ import {
   Zap,
 } from 'lucide-react';
 
-export type ScreenQualityPreset = '1080p60' | '720p30' | '1080p30';
+export type ScreenQualityPreset = '1080p60' | '720p60' | '1080p30' | '720p30';
 
 export const SCREEN_PRESETS: Record<
   ScreenQualityPreset,
@@ -41,27 +41,35 @@ export const SCREEN_PRESETS: Record<
 > = {
   '1080p60': {
     name: '1080p @ 60 FPS',
-    description: 'Ultra HD • Fluido p/ Jogos (10 Mbps)',
+    description: 'Alta Fidelidade • Padrão Discord Nitro (6 Mbps)',
     width: 1920,
     height: 1080,
     frameRate: 60,
-    maxBitrate: 10_000_000,
+    maxBitrate: 6_000_000,
   },
-  '720p30': {
-    name: '720p @ 30 FPS',
-    description: 'HD Econômico • Menor uso de CPU/Rede (3 Mbps)',
+  '720p60': {
+    name: '720p @ 60 FPS',
+    description: 'Fluido p/ Jogos Competitivos • Baixo Uso de GPU (3.5 Mbps)',
     width: 1280,
     height: 720,
-    frameRate: 30,
-    maxBitrate: 3_000_000,
+    frameRate: 60,
+    maxBitrate: 3_500_000,
   },
   '1080p30': {
     name: '1080p @ 30 FPS',
-    description: 'Full HD Nítido • Texto & Código (4.5 Mbps)',
+    description: 'Full HD Nítido • Texto & Código (4 Mbps)',
     width: 1920,
     height: 1080,
     frameRate: 30,
-    maxBitrate: 4_500_000,
+    maxBitrate: 4_000_000,
+  },
+  '720p30': {
+    name: '720p @ 30 FPS',
+    description: 'Econômico • Leve para Máquinas Básicas (2.5 Mbps)',
+    width: 1280,
+    height: 720,
+    frameRate: 30,
+    maxBitrate: 2_500_000,
   },
 };
 
@@ -255,17 +263,18 @@ export function ControlBar({
           dtx: false,
           red: true,
           forceStereo: true,
-          degradationPreference: 'maintain-framerate',
+          videoCodec: 'h264',
+          degradationPreference: 'balanced',
         }
       );
 
       if (nextState) {
-        // Função auxiliar para fixar 1080p 60fps no MediaStreamTrack e RTCRtpSender
+        // Função auxiliar para fixar parâmetros otimizados no MediaStreamTrack e RTCRtpSender
         const enforceHighQualitySettings = () => {
           try {
             const screenTrackPub = localParticipant.getTrackPublication(Track.Source.ScreenShare);
             if (screenTrackPub && screenTrackPub.track) {
-              // 1. Força restrições de 1080p 60fps e contentHint motion no track nativo do navegador
+              // 1. Aplica restrições de resolução e framerate no track nativo do navegador
               const mediaTrack = screenTrackPub.track.mediaStreamTrack;
               if (mediaTrack) {
                 if (typeof mediaTrack.applyConstraints === 'function') {
@@ -273,14 +282,14 @@ export function ControlBar({
                     .applyConstraints({
                       width: { ideal: activeConfig.width, max: activeConfig.width },
                       height: { ideal: activeConfig.height, max: activeConfig.height },
-                      frameRate: { ideal: activeConfig.frameRate, min: 30, max: activeConfig.frameRate },
+                      frameRate: { ideal: activeConfig.frameRate, max: activeConfig.frameRate },
                     })
                     .catch(() => {});
                 }
                 mediaTrack.contentHint = 'motion';
               }
 
-              // 2. Trava a taxa de quadros e bitrate máximo no sender WebRTC
+              // 2. Configura a taxa de quadros e bitrate máximo no sender WebRTC sem travar o pipeline da GPU
               const sender = screenTrackPub.track.sender;
               if (sender && typeof sender.getParameters === 'function') {
                 const params = sender.getParameters();
@@ -288,15 +297,14 @@ export function ControlBar({
                   params.encodings.forEach((enc) => {
                     enc.maxBitrate = activeConfig.maxBitrate;
                     enc.maxFramerate = activeConfig.frameRate;
-                    enc.scaleResolutionDownBy = 1.0;
                   });
-                  params.degradationPreference = 'maintain-framerate';
+                  params.degradationPreference = 'balanced';
                   sender.setParameters(params).catch(() => {});
                 }
               }
             }
           } catch (e) {
-            console.error('Aviso ao ajustar configurações WebRTC de 1080p 60fps:', e);
+            console.error('Aviso ao ajustar configurações WebRTC de transmissão:', e);
           }
         };
 
