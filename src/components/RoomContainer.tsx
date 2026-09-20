@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { LiveKitRoom, useTracks, AudioTrack, useLocalParticipant } from '@livekit/components-react';
-import { Track } from 'livekit-client';
+import React, { useState, useEffect, useRef } from 'react';
+import { LiveKitRoom, useTracks, AudioTrack, useLocalParticipant, useConnectionState } from '@livekit/components-react';
+import { ConnectionState, Track } from 'livekit-client';
 import { RoomHeader } from '@/components/RoomHeader';
 import { ScreenShareArea } from '@/components/ScreenShareArea';
 import { ParticipantList } from '@/components/ParticipantList';
@@ -44,23 +44,36 @@ function VoiceAudioRenderer({ isDeafened }: { isDeafened: boolean }) {
 function RoomInnerContent({ onLeave }: { onLeave: (reason?: string) => void }) {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isDeafened, setIsDeafened] = useState(false);
-  const { localParticipant } = useLocalParticipant();
+  const connectionState = useConnectionState();
+  const { localParticipant, isMicrophoneEnabled } = useLocalParticipant();
+  const { selectedDeviceId } = useMicrophones();
+  const hasAutoUnmutedRef = useRef(false);
   
   // Ativa automaticamente o som de pato ("Quack!") quando alguém entra ou sai
   useDuckSound();
 
-  // Ativa o microfone de forma suave após a conexão estabelecida sem derrubar a sala se falhar
+  // Ativa o microfone desmutado por padrão após a conexão estabelecida
   useEffect(() => {
-    if (localParticipant && !localParticipant.isMicrophoneEnabled) {
-      localParticipant.setMicrophoneEnabled(true, {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-      }).catch((err) => {
-        console.warn('Aviso: microfone não iniciado automaticamente (pode ser ativado pelo botão):', err);
-      });
+    if (
+      connectionState === ConnectionState.Connected &&
+      localParticipant &&
+      !isMicrophoneEnabled &&
+      !hasAutoUnmutedRef.current
+    ) {
+      hasAutoUnmutedRef.current = true;
+      localParticipant
+        .setMicrophoneEnabled(true, {
+          deviceId: selectedDeviceId ? { exact: selectedDeviceId } : undefined,
+          echoCancellation: true,
+          noiseSuppression: false, // Krisp AI assume a supressão de ruído sem conflitos
+          autoGainControl: false,  // Desativa ducking de ganho do Chromium ao falar
+        })
+        .catch((err) => {
+          console.warn('Aviso: microfone não iniciado automaticamente (pode ser ativado pelo botão):', err);
+          hasAutoUnmutedRef.current = false;
+        });
     }
-  }, [localParticipant]);
+  }, [connectionState, localParticipant, isMicrophoneEnabled, selectedDeviceId]);
 
   return (
     <>
@@ -109,8 +122,8 @@ const LIVEKIT_ROOM_OPTIONS = {
   },
   audioCaptureDefaults: {
     echoCancellation: true,
-    noiseSuppression: true,
-    autoGainControl: true,
+    noiseSuppression: false, // Krisp AI cuida da supressão sem conflitos de fase
+    autoGainControl: false,  // Desativa ducking de ganho do Chromium ao falar
   },
 };
 

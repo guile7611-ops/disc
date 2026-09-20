@@ -66,6 +66,7 @@ export const SCREEN_PRESETS: Record<
 };
 
 const QUALITY_STORAGE_KEY = 'screenshare_quality_preset';
+const KRISP_STORAGE_KEY = 'krisp_noise_filter_enabled';
 
 interface ControlBarProps {
   onLeave: () => void;
@@ -102,6 +103,7 @@ export function ControlBar({
   const lastSeenMsgCountRef = useRef(chatMessages.length);
   const menuRef = useRef<HTMLDivElement>(null);
   const qualityMenuRef = useRef<HTMLDivElement>(null);
+  const hasAttemptedAutoKrispRef = useRef(false);
 
   // Carrega preset de qualidade salvo
   useEffect(() => {
@@ -112,6 +114,21 @@ export function ControlBar({
       }
     }
   }, []);
+
+  // Inicializa o filtro de ruído Krisp AI por padrão ao montar/conectar
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const saved = localStorage.getItem(KRISP_STORAGE_KEY);
+    // Padrão é TRUE (Online) se o usuário ainda não tiver desativado manualmente
+    const shouldEnable = saved === null ? true : saved === 'true';
+
+    if (shouldEnable && !isNoiseFilterEnabled && !isNoiseFilterPending && !hasAttemptedAutoKrispRef.current) {
+      hasAttemptedAutoKrispRef.current = true;
+      setNoiseFilterEnabled(true).catch((err) => {
+        console.warn('Aviso ao inicializar o Krisp por padrão:', err);
+      });
+    }
+  }, [isNoiseFilterEnabled, isNoiseFilterPending, setNoiseFilterEnabled]);
 
   const handleSelectQuality = (preset: ScreenQualityPreset) => {
     setQualityPreset(preset);
@@ -137,9 +154,10 @@ export function ControlBar({
     try {
       const nextState = !isMicrophoneEnabled;
       await localParticipant.setMicrophoneEnabled(nextState, {
+        deviceId: selectedDeviceId ? { exact: selectedDeviceId } : undefined,
         echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
+        noiseSuppression: false, // Krisp AI assume a supressão de ruído
+        autoGainControl: false,  // Desativa ducking de ganho do Chromium ao falar
       });
     } catch (err) {
       console.error('Erro ao alternar microfone:', err);
@@ -186,7 +204,11 @@ export function ControlBar({
   const toggleKrispNoiseFilter = async () => {
     if (isNoiseFilterPending) return;
     try {
-      await setNoiseFilterEnabled(!isNoiseFilterEnabled);
+      const nextState = !isNoiseFilterEnabled;
+      await setNoiseFilterEnabled(nextState);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(KRISP_STORAGE_KEY, String(nextState));
+      }
     } catch (err) {
       console.error('Erro ao alternar supressão de ruído Krisp:', err);
     }
@@ -204,14 +226,15 @@ export function ControlBar({
         nextState,
         {
           audio: {
-            echoCancellation: true, // Filtra eco e vozes que saem na saída de áudio
+            echoCancellation: false, // CRÍTICO: Não aplicar cancelamento de eco no som do sistema/jogos, senão corta/abaixa ao falar!
             noiseSuppression: false,
             autoGainControl: false,
             channelCount: 2,
             sampleRate: 48000,
-          },
-          suppressLocalAudioPlayback: true,
-          selfBrowserSurface: 'exclude', // Exclui o som e a superfície do próprio app de chamada
+            restrictOwnAudio: true,
+          } as unknown as boolean,
+          suppressLocalAudioPlayback: false, // Mantém o som do jogo/vídeo tocando normalmente nos fones do usuário
+          selfBrowserSurface: 'exclude', // Exclui a aba/janela do próprio app de chamada
           systemAudio: 'include',
           resolution: {
             width: activeConfig.width,
@@ -331,14 +354,14 @@ export function ControlBar({
       </div>
 
       {/* Botões Centrais de Controle */}
-      <div className="flex items-center gap-2.5 sm:gap-3 mx-auto sm:mx-0">
+      <div className="flex items-center gap-1.5 sm:gap-2.5 md:gap-3 mx-auto sm:mx-0">
         {/* 1. Grupo do Botão Microfone com Seletor Popover */}
         <div className="relative flex items-center" ref={menuRef}>
           <div className="relative group flex items-center">
             <button
               onClick={toggleMicrophone}
               disabled={isMicLoading}
-              className={`h-12 px-3.5 sm:px-4 rounded-l-full flex items-center justify-center transition-all cursor-pointer ${
+              className={`h-11 sm:h-12 px-3 sm:px-4 rounded-l-full flex items-center justify-center transition-all cursor-pointer ${
                 isMicrophoneEnabled
                   ? 'bg-[#313338] hover:bg-[#3b3e45] text-[#dbdee1] border-y border-l border-[#3f4248]'
                   : 'bg-[#f23f43] hover:bg-[#d83a3e] text-white shadow-lg shadow-rose-950/40'
@@ -362,7 +385,7 @@ export function ControlBar({
                 setShowMicMenu((prev) => !prev);
                 setShowQualityMenu(false);
               }}
-              className={`h-12 px-2 rounded-r-full flex items-center justify-center border-l border-[#383a40] transition-all cursor-pointer ${
+              className={`h-11 sm:h-12 px-2 rounded-r-full flex items-center justify-center border-l border-[#383a40] transition-all cursor-pointer ${
                 isMicrophoneEnabled
                   ? 'bg-[#313338] hover:bg-[#3b3e45] text-[#dbdee1] border-y border-r border-[#3f4248]'
                   : 'bg-[#f23f43] hover:bg-[#d83a3e] text-white'
@@ -505,20 +528,48 @@ export function ControlBar({
           )}
         </div>
 
+        {/* Botão de Atalho Rápido Krisp AI (Online por padrão) */}
+        <div className="relative group">
+          <button
+            type="button"
+            onClick={toggleKrispNoiseFilter}
+            disabled={isNoiseFilterPending}
+            className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all cursor-pointer relative ${
+              isNoiseFilterEnabled
+                ? 'bg-[#23a55a]/20 hover:bg-[#23a55a]/30 text-[#23a55a] border border-[#23a55a] shadow-lg shadow-emerald-950/40'
+                : 'bg-[#313338] hover:bg-[#3b3e45] text-[#949ba4] border border-[#3f4248]'
+            }`}
+            title={isNoiseFilterEnabled ? 'Krisp AI: Online (Filtrando ruídos com IA)' : 'Krisp AI: Desativado'}
+            aria-label="Alternar Supressão de Ruído Krisp AI"
+          >
+            {isNoiseFilterPending ? (
+              <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin text-[#5865F2]" />
+            ) : (
+              <Sparkles className={`w-4 h-4 sm:w-5 sm:h-5 ${isNoiseFilterEnabled ? 'text-[#23a55a]' : 'text-[#949ba4]'}`} />
+            )}
+            {isNoiseFilterEnabled && (
+              <span className="absolute bottom-1 right-1 w-2 sm:w-2.5 h-2 sm:h-2.5 rounded-full bg-[#23a55a] ring-2 ring-[#232428]" />
+            )}
+          </button>
+          <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block bg-[#111214] text-[#dbdee1] text-xs px-3 py-1.5 rounded-md border border-[#2b2d31] whitespace-nowrap shadow-xl z-30 pointer-events-none">
+            {isNoiseFilterEnabled ? 'Krisp AI: Online' : 'Krisp AI: Desativado'}
+          </div>
+        </div>
+
         {/* 2. Botão Ensurdecer (Deafen - Silenciar Sala & Microfone) */}
         <div className="relative group">
           <button
             onClick={handleToggleDeafen}
-            className={`w-12 h-12 rounded-full flex items-center justify-center transition-all cursor-pointer relative ${
+            className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all cursor-pointer relative ${
               isDeafened
                 ? 'bg-[#f23f43] hover:bg-[#d83a3e] text-white shadow-lg shadow-rose-950/40 border border-[#f23f43]'
                 : 'bg-[#313338] hover:bg-[#3b3e45] text-[#dbdee1] border border-[#3f4248]'
             }`}
             aria-label={isDeafened ? 'Desativar ensurdecer' : 'Ensurdecer (Silenciar sala e microfone)'}
           >
-            <Headphones className="w-5 h-5" />
+            <Headphones className="w-4 h-4 sm:w-5 sm:h-5" />
             {isDeafened && (
-              <span className="absolute w-7 h-0.5 bg-white rotate-45 pointer-events-none" />
+              <span className="absolute w-6 sm:w-7 h-0.5 bg-white rotate-45 pointer-events-none" />
             )}
           </button>
           <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block bg-[#111214] text-[#dbdee1] text-xs px-3 py-1.5 rounded-md border border-[#2b2d31] whitespace-nowrap shadow-xl z-30">
@@ -532,7 +583,7 @@ export function ControlBar({
             <button
               onClick={toggleScreenShare}
               disabled={isScreenLoading || !isScreenShareSupported}
-              className={`h-12 px-3.5 sm:px-4 rounded-l-full flex items-center justify-center transition-all cursor-pointer ${
+              className={`h-11 sm:h-12 px-3 sm:px-4 rounded-l-full flex items-center justify-center transition-all cursor-pointer ${
                 !isScreenShareSupported
                   ? 'bg-[#1e1f22] text-[#4e5058] border-y border-l border-[#2b2d31] cursor-not-allowed'
                   : isScreenShareEnabled
@@ -542,11 +593,11 @@ export function ControlBar({
               aria-label={isScreenShareEnabled ? 'Interromper compartilhamento' : 'Compartilhar tela'}
             >
               {isScreenLoading ? (
-                <Loader2 className="w-5 h-5 animate-spin text-[#949ba4]" />
+                <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin text-[#949ba4]" />
               ) : isScreenShareEnabled ? (
-                <MonitorOff className="w-5 h-5" />
+                <MonitorOff className="w-4 h-4 sm:w-5 sm:h-5" />
               ) : (
-                <Monitor className="w-5 h-5" />
+                <Monitor className="w-4 h-4 sm:w-5 sm:h-5" />
               )}
             </button>
 
@@ -557,7 +608,7 @@ export function ControlBar({
                 setShowMicMenu(false);
               }}
               disabled={!isScreenShareSupported}
-              className={`h-12 px-2 rounded-r-full flex items-center justify-center border-l border-[#383a40] transition-all cursor-pointer ${
+              className={`h-11 sm:h-12 px-1.5 sm:px-2 rounded-r-full flex items-center justify-center border-l border-[#383a40] transition-all cursor-pointer ${
                 !isScreenShareSupported
                   ? 'bg-[#1e1f22] text-[#4e5058] border-y border-r border-[#2b2d31] cursor-not-allowed'
                   : isScreenShareEnabled
@@ -617,48 +668,23 @@ export function ControlBar({
           )}
         </div>
 
-        {/* 4. Botão Dedicado Krisp AI */}
-        <div className="relative group hidden lg:block">
-          <button
-            onClick={toggleKrispNoiseFilter}
-            disabled={isNoiseFilterPending}
-            className={`h-12 px-3.5 rounded-full flex items-center gap-2 transition-all cursor-pointer border text-xs font-bold ${
-              isNoiseFilterEnabled
-                ? 'bg-[#23a55a]/20 border-[#23a55a] text-[#23a55a] shadow-lg shadow-emerald-950/40'
-                : 'bg-[#313338] hover:bg-[#3b3e45] border-[#3f4248] text-[#dbdee1]'
-            }`}
-            aria-label="Ativar ou desativar supressão de ruído Krisp AI"
-          >
-            {isNoiseFilterPending ? (
-              <Loader2 className="w-4 h-4 animate-spin text-[#5865F2]" />
-            ) : (
-              <Sparkles className={`w-4 h-4 ${isNoiseFilterEnabled ? 'text-[#23a55a] animate-pulse' : 'text-[#949ba4]'}`} />
-            )}
-            <span>
-              {isNoiseFilterEnabled ? 'Krisp On' : 'Krisp Off'}
-            </span>
-          </button>
-          <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block bg-[#111214] text-[#dbdee1] text-xs px-3 py-1.5 rounded-md border border-[#2b2d31] whitespace-nowrap shadow-xl z-30">
-            {isNoiseFilterEnabled ? 'Desativar Supressão Krisp AI' : 'Ativar Supressão Krisp AI'}
-          </div>
-        </div>
 
         {/* 5. Botão de Bate-papo (Chat) */}
         <div className="relative group">
           <button
             onClick={onToggleChat}
-            className={`w-12 h-12 rounded-full flex items-center justify-center transition-all cursor-pointer relative ${
+            className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all cursor-pointer relative ${
               isChatOpen
                 ? 'bg-[#5865F2] hover:bg-[#4752C4] text-white shadow-lg shadow-indigo-950/40 border border-[#5865F2]'
                 : 'bg-[#313338] hover:bg-[#3b3e45] text-[#dbdee1] border border-[#3f4248]'
             }`}
             aria-label="Abrir ou fechar bate-papo"
           >
-            <MessageSquare className="w-5 h-5" />
+            <MessageSquare className="w-4 h-4 sm:w-5 sm:h-5" />
 
             {/* Contador de Mensagens Não Lidas */}
             {unreadCount > 0 && !isChatOpen && (
-              <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-[#f23f43] text-white text-[10px] font-extrabold flex items-center justify-center shadow-md animate-bounce border border-[#232428]">
+              <span className="absolute -top-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-[#f23f43] text-white text-[9px] sm:text-[10px] font-extrabold flex items-center justify-center shadow-md animate-bounce border border-[#232428]">
                 {unreadCount > 9 ? '9+' : unreadCount}
               </span>
             )}
@@ -672,10 +698,10 @@ export function ControlBar({
         <div className="relative group">
           <button
             onClick={handleDisconnect}
-            className="w-12 h-12 rounded-full bg-[#f23f43] hover:bg-[#d83a3e] text-white flex items-center justify-center transition-all shadow-lg shadow-rose-950/50 cursor-pointer"
+            className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-[#f23f43] hover:bg-[#d83a3e] text-white flex items-center justify-center transition-all shadow-lg shadow-rose-950/50 cursor-pointer"
             aria-label="Desconectar da chamada"
           >
-            <PhoneOff className="w-5 h-5" />
+            <PhoneOff className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
           <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block bg-[#111214] text-[#dbdee1] text-xs px-3 py-1.5 rounded-md border border-[#2b2d31] whitespace-nowrap shadow-xl z-30">
             Desconectar da chamada
